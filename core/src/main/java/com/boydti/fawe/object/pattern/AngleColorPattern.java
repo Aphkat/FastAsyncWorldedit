@@ -3,7 +3,7 @@ package com.boydti.fawe.object.pattern;
 import com.boydti.fawe.Fawe;
 import com.boydti.fawe.FaweCache;
 import com.boydti.fawe.object.DataAnglePattern;
-import com.boydti.fawe.util.TextureUtil;
+import com.boydti.fawe.util.TextureHolder;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.blocks.BaseBlock;
@@ -11,22 +11,16 @@ import com.sk89q.worldedit.extent.Extent;
 import java.io.IOException;
 
 public class AngleColorPattern extends DataAnglePattern {
-    private static final double FACTOR = 1d / 256;
-    private transient TextureUtil util;
+    protected transient TextureHolder util;
 
-    private final boolean randomize;
-    private final int complexity;
-
-    public AngleColorPattern(Extent extent, int complexity, boolean randomize) {
-        super(extent);
-        this.complexity = complexity;
-        this.randomize = randomize;
-        this.util = Fawe.get().getCachedTextureUtil(randomize, 0, complexity);
+    public AngleColorPattern(Extent extent, TextureHolder util, int distance) {
+        super(extent, distance);
+        this.util = util;
     }
 
     public int getColor(int color, int slope) {
         if (slope == 0) return color;
-        double newFactor = (256 - Math.min(256, slope)) * FACTOR;
+        double newFactor = (1 - Math.min(1, slope * FACTOR));
         int newRed = (int) (((color >> 16) & 0xFF) * newFactor);
         int newGreen = (int) (((color >> 8) & 0xFF) * newFactor);
         int newBlue = (int) (((color >> 0) & 0xFF) * newFactor);
@@ -38,10 +32,10 @@ public class AngleColorPattern extends DataAnglePattern {
         BaseBlock block = extent.getBlock(position);
         int slope = getSlope(block, position);
         if (slope == -1) return block;
-        int color = util.getColor(block);
+        int color = util.getTextureUtil().getColor(block);
         if (color == 0) return block;
         int newColor = getColor(color, slope);
-        return util.getNearestBlock(newColor);
+        return util.getTextureUtil().getNearestBlock(newColor);
     }
 
     @Override
@@ -67,16 +61,16 @@ public class AngleColorPattern extends DataAnglePattern {
         BaseBlock block = extent.getBlock(getPosition);
         int slope = getSlope(block, getPosition);
         if (slope == -1) return false;
-        int color = util.getColor(block);
+        int color = util.getTextureUtil().getColor(block);
         if (color == 0) return false;
         int newColor = getColor(color, slope);
-        BaseBlock newBlock = util.getNearestBlock(newColor);
+        BaseBlock newBlock = util.getTextureUtil().getNearestBlock(newColor);
         if (newBlock == null) return false;
         return extent.setBlock(setPosition, newBlock);
     }
 
     private void readObject(java.io.ObjectInputStream stream) throws IOException, ClassNotFoundException {
         stream.defaultReadObject();
-        util = Fawe.get().getCachedTextureUtil(randomize, 0, complexity);
+        util = Fawe.get().getCachedTextureUtil(true, 0, 100);
     }
 }

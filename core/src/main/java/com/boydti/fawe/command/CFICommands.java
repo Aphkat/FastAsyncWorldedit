@@ -7,12 +7,9 @@ import com.boydti.fawe.config.Commands;
 import com.boydti.fawe.jnbt.anvil.HeightMapMCAGenerator;
 import com.boydti.fawe.object.FawePlayer;
 import com.boydti.fawe.object.RunnableVal;
-import com.boydti.fawe.util.CleanTextureUtil;
-import com.boydti.fawe.util.FilteredTextureUtil;
-import com.boydti.fawe.util.ImgurUtility;
-import com.boydti.fawe.util.StringMan;
-import com.boydti.fawe.util.TaskManager;
-import com.boydti.fawe.util.TextureUtil;
+import com.boydti.fawe.object.clipboard.MultiClipboardHolder;
+import com.boydti.fawe.object.pattern.PatternExtent;
+import com.boydti.fawe.util.*;
 import com.boydti.fawe.util.chat.Message;
 import com.boydti.fawe.util.image.ImageUtil;
 import com.intellectualcrafters.plot.PS;
@@ -32,17 +29,17 @@ import com.sk89q.minecraft.util.commands.Command;
 import com.sk89q.minecraft.util.commands.CommandContext;
 import com.sk89q.minecraft.util.commands.CommandException;
 import com.sk89q.minecraft.util.commands.CommandPermissions;
-import com.sk89q.worldedit.EmptyClipboardException;
-import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.WorldEditException;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.blocks.BaseBlock;
+import com.sk89q.worldedit.blocks.BlockID;
 import com.sk89q.worldedit.command.MethodCommands;
+import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.extension.input.InputParseException;
 import com.sk89q.worldedit.extension.input.ParserContext;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormat;
 import com.sk89q.worldedit.function.mask.Mask;
+import com.sk89q.worldedit.function.pattern.BlockPattern;
 import com.sk89q.worldedit.function.pattern.Pattern;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.sk89q.worldedit.session.request.Request;
@@ -55,12 +52,16 @@ import com.sk89q.worldedit.world.biome.BaseBiome;
 import com.sk89q.worldedit.world.registry.BundledBlockData;
 import com.sk89q.worldedit.world.registry.WorldData;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 import javax.imageio.ImageIO;
@@ -80,14 +81,32 @@ public class CFICommands extends MethodCommands {
         this.dispathcer= dispatcher;
     }
 
+    private File getFolder(String worldName) {
+        return new File(PS.imp().getWorldContainer(), worldName + File.separator + "region");
+    }
+
     @Command(
             aliases = {"heightmap"},
             usage = "<url>",
             desc = "Start CFI with a height map as a base"
     )
     @CommandPermissions("worldedit.anvil.cfi")
-    public void heightmap(FawePlayer fp, BufferedImage image) {
-        HeightMapMCAGenerator generator = new HeightMapMCAGenerator(image, null);
+    public void heightmap(FawePlayer fp, BufferedImage image, @Optional("1") double yscale) {
+        if (yscale != 0) {
+            int[] raw = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+            int[] table = new int[256];
+            for (int i = 0; i < table.length; i++) {
+                table[i] = Math.min(255, (int) (i * yscale));
+            }
+            for (int i = 0; i < raw.length; i++) {
+                int color = raw[i];
+                int red = table[(color >> 16) & 0xFF];
+                int green = table[(color >> 8) & 0xFF];
+                int blue = table[(color >> 0) & 0xFF];
+                raw[i] = (red << 16) + (green << 8) + (blue << 0);
+            }
+        }
+        HeightMapMCAGenerator generator = new HeightMapMCAGenerator(image, getFolder(generateName()));
         setup(generator, fp);
     }
 
@@ -98,14 +117,22 @@ public class CFICommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.anvil.cfi")
     public void heightmap(FawePlayer fp, int width, int length) {
-        HeightMapMCAGenerator generator = new HeightMapMCAGenerator(width, length, null);
+        HeightMapMCAGenerator generator = new HeightMapMCAGenerator(width, length, getFolder(generateName()));
         setup(generator, fp);
     }
 
+    private String generateName() {
+        DateFormat df = new SimpleDateFormat("dd.MM.yyyy HH.mm.ss");
+        String data = df.format(new Date());
+        return data;
+    }
+
     private void setup(HeightMapMCAGenerator generator, FawePlayer fp) {
-        CFISettings settings = getSettings(fp);
-        settings.remove().setGenerator(generator).bind();
+        CFISettings settings = getSettings(fp).remove();
+        generator.setPacketViewer(fp);
+        settings.setGenerator(generator).bind();
         generator.setImageViewer(Fawe.imp().getImageViewer(fp));
+        generator.update();
         mainMenu(fp);
     }
 
@@ -201,12 +228,14 @@ public class CFICommands extends MethodCommands {
             });
             if (plot == null) return;
 
-            File folder = new File(PS.imp().getWorldContainer(), plot.getWorldName() + File.separator + "region");
+            File folder = getFolder(plot.getWorldName());
             HeightMapMCAGenerator generator = settings.getGenerator();
             generator.setFolder(folder);
 
             fp.sendMessage(BBC.getPrefix() + "Generating");
             generator.generate();
+            generator.setPacketViewer(null);
+            generator.setImageViewer(null);
             settings.remove();
             fp.sendMessage(BBC.getPrefix() + "Done!");
             TaskManager.IMP.sync(new RunnableVal<Object>() {
@@ -355,7 +384,7 @@ public class CFICommands extends MethodCommands {
                     "`#clipboard` will only use the blocks present in your clipboard."
     )
     @CommandPermissions("worldedit.anvil.cfi")
-    public void paletteblocks(FawePlayer fp, @Optional String arg) throws ParameterException, EmptyClipboardException, InputParseException, FileNotFoundException {
+    public void paletteblocks(FawePlayer fp, Player player, LocalSession session, @Optional String arg) throws ParameterException, EmptyClipboardException, InputParseException, FileNotFoundException {
         if (arg == null) {
             msg("What blocks do you want to color with?").newline()
             .text("&7[&aAll&7]").cmdTip(alias() + " PaletteBlocks *").text(" - All available blocks")
@@ -380,6 +409,7 @@ public class CFICommands extends MethodCommands {
 
         Set<BaseBlock> blocks;
         switch (arg.toLowerCase()) {
+            case "true":
             case "*": {
                 generator.setTextureUtil(Fawe.get().getTextureUtil());
                 return;
@@ -398,7 +428,23 @@ public class CFICommands extends MethodCommands {
                 break;
             }
             default: {
-                blocks = worldEdit.getBlockFactory().parseFromListInput(arg, context);
+                blocks = new HashSet<>();
+                BlockPattern pattern = new BlockPattern(new BaseBlock(BlockID.AIR));
+                PatternExtent extent = new PatternExtent(pattern);
+
+                ParserContext parserContext = new ParserContext();
+                parserContext.setActor(player);
+                parserContext.setWorld(player.getWorld());
+                parserContext.setSession(session);
+                parserContext.setExtent(extent);
+                Request.request().setExtent(extent);
+                Mask mask = worldEdit.getMaskFactory().parseFromInput(arg, parserContext);
+                TextureUtil tu = Fawe.get().getTextureUtil();
+                for (int combinedId : tu.getValidBlockIds()) {
+                    BaseBlock block = FaweCache.CACHE_BLOCK[combinedId];
+                    pattern.setBlock(block);
+                    if (mask.test(Vector.ZERO)) blocks.add(block);
+                }
                 break;
             }
         }
@@ -452,14 +498,14 @@ public class CFICommands extends MethodCommands {
 
         World world = fp.getWorld();
         WorldData wd = world.getWorldData();
-        ClipboardHolder[] clipboards = ClipboardFormat.SCHEMATIC.loadAllFromInput(fp.getPlayer(), wd, schematic, true);
-        if (clipboards == null) {
+        MultiClipboardHolder multi = ClipboardFormat.SCHEMATIC.loadAllFromInput(fp.getPlayer(), wd, schematic, true);
+        if (multi == null) {
             return;
         }
         if (imageMask == null) {
-            gen.addSchems(mask, wd, clipboards, rarity, distance, rotate);
+            gen.addSchems(mask, wd, multi.getHolders(), rarity, distance, rotate);
         } else {
-            gen.addSchems(imageMask, mask, wd, clipboards, rarity, distance, rotate);
+            gen.addSchems(imageMask, mask, wd, multi.getHolders(), rarity, distance, rotate);
         }
         msg("Added schematics!").send(fp);
         populate(fp);
@@ -555,6 +601,73 @@ public class CFICommands extends MethodCommands {
     }
 
     @Command(
+            aliases = {"baseid", "bedrockid"},
+            usage = "<block>",
+            desc = "Change the block used for the base\n" +
+                    "e.g. Bedrock"
+    )
+    @CommandPermissions("worldedit.anvil.cfi")
+    public void baseId(FawePlayer fp, BaseBlock block) throws ParameterException, WorldEditException {
+        CFISettings settings = assertSettings(fp);
+        settings.getGenerator().setBedrockId(block.getId());
+        msg("Set base id!").send(fp);
+        settings.resetComponent();
+        component(fp);
+    }
+
+    @Command(
+            aliases = {"worldthickness", "width", "thickness"},
+            usage = "<height>",
+            desc = "Set the thickness of the generated world\n" +
+                    " - A value of 0 is the default and will not modify the height"
+    )
+    @CommandPermissions("worldedit.anvil.cfi")
+    public void worldthickness(FawePlayer fp, int height) throws ParameterException, WorldEditException {
+        assertSettings(fp).getGenerator().setWorldThickness(height);
+        msg("Set world thickness!").send(fp);
+        component(fp);
+    }
+
+    @Command(
+            aliases = {"floorthickness", "floorheight", "floorwidth"},
+            usage = "<height>",
+            desc = "Set the thickness of the top layer\n" +
+                    " - A value of 0 is the default and will only set the top block"
+    )
+    @CommandPermissions("worldedit.anvil.cfi")
+    public void floorthickness(FawePlayer fp, int height) throws ParameterException, WorldEditException {
+        assertSettings(fp).getGenerator().setFloorThickness(height);
+        msg("Set floor thickness!").send(fp);
+        component(fp);
+    }
+
+    @Command(
+            aliases = {"update", "refresh", "resend"},
+            desc = "Resend the CFI chunks"
+    )
+    @CommandPermissions("worldedit.anvil.cfi")
+    public void update(FawePlayer fp) throws ParameterException, WorldEditException {
+        assertSettings(fp).getGenerator().update();
+        msg("Chunks refreshed!").send(fp);
+        mainMenu(fp);
+    }
+
+    @Command(
+            aliases = {"tp", "visit", "home"},
+            desc = "Teleport to the CFI virtual world"
+    )
+    @CommandPermissions("worldedit.anvil.cfi")
+    public void tp(FawePlayer fp) throws ParameterException, WorldEditException {
+        HeightMapMCAGenerator gen = assertSettings(fp).getGenerator();
+        msg("Teleporting...").send(fp);
+        Vector origin = gen.getOrigin();
+        Player player = fp.getPlayer();
+        player.setPosition(origin.subtract(16, 0, 16));
+        player.findFreePosition();
+        mainMenu(fp);
+    }
+
+    @Command(
             aliases = {"waterheight", "sealevel", "setwaterheight"},
             usage = "<height>",
             desc = "Set the level water is generated at\n" +
@@ -564,7 +677,7 @@ public class CFICommands extends MethodCommands {
     @CommandPermissions("worldedit.anvil.cfi")
     public void waterheight(FawePlayer fp, int height) throws ParameterException, WorldEditException {
         assertSettings(fp).getGenerator().setWaterHeight(height);
-        msg("Set height!").send(fp);
+        msg("Set water height!").send(fp);
         component(fp);
     }
 
@@ -573,6 +686,7 @@ public class CFICommands extends MethodCommands {
             usage = "<url>",
             desc = "Color terrain using glass"
     )
+    // ![79,174,212,5:3,5:4,18,161,20]
     @CommandPermissions("worldedit.anvil.cfi")
     public void glass(FawePlayer fp, BufferedImage image, @Optional BufferedImage imageMask, @Optional Mask mask, @Switch('w') boolean disableWhiteOnly) throws ParameterException, WorldEditException {
         CFISettings settings = assertSettings(fp);
@@ -789,7 +903,7 @@ public class CFICommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.anvil.cfi")
     public void image(FawePlayer fp, @Optional BufferedImage image, CommandContext context) throws ParameterException, CommandException {
-        CFISettings settings = getSettings(fp).bind();
+        CFISettings settings = getSettings(fp);
         String[] split = getArguments(context).split(" ");
         int index = 2;
 
@@ -876,6 +990,10 @@ public class CFICommands extends MethodCommands {
         .newline()
         .text("&7[&aWaterHeight&7]").suggestTip(alias() + " " + alias("waterheight") + " 60").text(" - Sea level for whole map")
         .newline()
+        .text("&7[&aFloorThickness&7]").suggestTip(alias() + " " + alias("floorthickness") + " 60").text(" - Floor thickness of entire map")
+        .newline()
+        .text("&7[&aWorldThickness&7]").suggestTip(alias() + " " + alias("worldthickness") + " 60").text(" - World thickness of entire map")
+        .newline()
         .text("&7[&aSnow&7]").suggestTip(alias() + " " + alias("snow") + maskArgs).text(" - Set snow in the masked areas")
         .newline();
 
@@ -883,6 +1001,7 @@ public class CFICommands extends MethodCommands {
             String disabled = "You must specify a pattern";
             msg
             .text("&7[&cWaterId&7]").tooltip(disabled).newline()
+            .text("&7[&cBedrockId&7]").tooltip(disabled).newline()
             .text("&7[&cFloor&7]").tooltip(disabled).newline()
             .text("&7[&cMain&7]").tooltip(disabled).newline()
             .text("&7[&cColumn&7]").tooltip(disabled).newline()
@@ -893,6 +1012,7 @@ public class CFICommands extends MethodCommands {
 
             msg
             .text("&7[&aWaterId&7]").cmdTip(alias() + " waterId " + pattern).text(" - Water id for whole map").newline()
+            .text("&7[&aBedrockId&7]").cmdTip(alias() + " baseId " + pattern).text(" - Bedrock id for whole map").newline()
             .text("&7[&aFloor&7]").cmdTip(alias() + " floor" + compArgs).text(" - Set the floor in the masked areas").newline()
             .text("&7[&aMain&7]").cmdTip(alias() + " main" + compArgs).text(" - Set the main block in the masked areas").newline()
             .text("&7[&aColumn&7]").cmdTip(alias() + " column" + compArgs).text(" - Set the columns in the masked areas").newline()
@@ -935,6 +1055,8 @@ public class CFICommands extends MethodCommands {
         protected String patternArg;
 
         protected String category;
+
+        private boolean bound;
 
         public CFISettings(FawePlayer player) {
             this.fp = player;
@@ -993,10 +1115,13 @@ public class CFICommands extends MethodCommands {
 
         public CFISettings setGenerator(HeightMapMCAGenerator generator) {
             this.generator = generator;
+            if (bound) fp.getSession().setVirtualWorld(generator);
             return this;
         }
 
         public CFISettings bind() {
+            if (generator != null) fp.getSession().setVirtualWorld(generator);
+            bound = true;
             fp.setMeta("CFISettings", this);
             return this;
         }
@@ -1011,8 +1136,13 @@ public class CFICommands extends MethodCommands {
         }
 
         public CFISettings remove() {
-            popMessages(fp);
             fp.deleteMeta("CFISettings");
+            HeightMapMCAGenerator gen = this.generator;
+            if (gen != null) {
+                fp.getSession().setVirtualWorld(null);
+            }
+            popMessages(fp);
+            bound = false;
             generator = null;
             image = null;
             imageArg = null;

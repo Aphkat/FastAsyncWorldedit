@@ -9,13 +9,16 @@ import com.sk89q.worldedit.extent.Extent;
 import com.sk89q.worldedit.function.pattern.AbstractPattern;
 
 public class DataAnglePattern extends AbstractPattern {
+    public final double FACTOR;
     public final Extent extent;
     public final int maxY;
-    public final double factor = 1d / 255;
+    public final int distance;
 
-    public DataAnglePattern(Extent extent) {
+    public DataAnglePattern(Extent extent, int distance) {
         this.extent = new ExtentHeightCacher(extent);
         this.maxY = extent.getMaximumPoint().getBlockY();
+        this.distance = distance;
+        this.FACTOR = (1D / distance) * (1D / 255);
     }
 
     public int getSlope(BaseBlock block, Vector vector) {
@@ -27,10 +30,10 @@ public class DataAnglePattern extends AbstractPattern {
         }
         int slope;
         boolean aboveMin;
-        slope = Math.abs(extent.getNearestSurfaceTerrainBlock(x + 1, z, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x - 1, z, y, 0, maxY)) * 7;
-        slope += Math.abs(extent.getNearestSurfaceTerrainBlock(x, z + 1, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x, z - 1, y, 0, maxY)) * 7;
-        slope += Math.abs(extent.getNearestSurfaceTerrainBlock(x + 1, z + 1, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x - 1, z - 1, y, 0, maxY)) * 5;
-        slope += Math.abs(extent.getNearestSurfaceTerrainBlock(x - 1, z + 1, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x + 1, z - 1, y, 0, maxY)) * 5;
+        slope = Math.abs(extent.getNearestSurfaceTerrainBlock(x + distance, z, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x - distance, z, y, 0, maxY)) * 7;
+        slope += Math.abs(extent.getNearestSurfaceTerrainBlock(x, z + distance, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x, z - distance, y, 0, maxY)) * 7;
+        slope += Math.abs(extent.getNearestSurfaceTerrainBlock(x + distance, z + distance, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x - distance, z - distance, y, 0, maxY)) * 5;
+        slope += Math.abs(extent.getNearestSurfaceTerrainBlock(x - distance, z + distance, y, 0, maxY) - extent.getNearestSurfaceTerrainBlock(x + distance, z - distance, y, 0, maxY)) * 5;
         return slope;
     }
 

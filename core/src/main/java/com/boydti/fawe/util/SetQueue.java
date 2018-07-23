@@ -3,6 +3,7 @@ package com.boydti.fawe.util;
 import com.boydti.fawe.Fawe;
 import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.object.FaweQueue;
+import com.boydti.fawe.wrappers.WorldWrapper;
 import com.sk89q.worldedit.world.World;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -103,7 +104,7 @@ public class SetQueue {
                     long currentAllocate = allocate - absDiff;
 
                     if (!emptyTasks) {
-                        long taskAllocate = empty ? currentAllocate : currentAllocate >> 1;
+                        long taskAllocate = activeQueues.isEmpty() ? currentAllocate : 1 + (currentAllocate >> 1);
                         long used = 0;
                         boolean wait = false;
                         do {
@@ -242,6 +243,8 @@ public class SetQueue {
     }
 
     public FaweQueue getNewQueue(World world, boolean fast, boolean autoqueue) {
+        world = WorldWrapper.unwrap(world);
+        if (world instanceof FaweQueue) return (FaweQueue) world;
         FaweQueue queue = Fawe.imp().getNewQueue(world, fast);
         if (autoqueue) {
             queue.setStage(QueueStage.INACTIVE);

@@ -394,7 +394,6 @@ public class ForgeQueue_All extends NMSMappedFaweQueue<World, Chunk, ExtendedBlo
                 net.minecraft.world.biome.Biome[] existingBiomes = new net.minecraft.world.biome.Biome[256];
                 Arrays.fill(existingBiomes, base);
                 fieldBiomes.set(generator, existingBiomes);
-                boolean cold = base.getTemperature() <= 1;
                 IChunkGenerator existingGenerator = (IChunkGenerator) fieldChunkGenerator.get(nmsWorld.getChunkProvider());
                 long existingSeed = world.getSeed();
                 {
@@ -675,19 +674,14 @@ public class ForgeQueue_All extends NMSMappedFaweQueue<World, Chunk, ExtendedBlo
     }
 
     @Override
-    public boolean removeLighting(ExtendedBlockStorage[] sections, RelightMode mode, boolean sky) {
-        if (mode == RelightMode.ALL) {
-            for (int i = 0; i < sections.length; i++) {
-                ExtendedBlockStorage section = sections[i];
-                if (section != null) {
-                    section.setBlockLight(new NibbleArray());
-                    if (sky) {
-                        section.setSkyLight(new NibbleArray());
-                    }
-                }
+    public boolean removeSectionLighting(ExtendedBlockStorage section, int layer, boolean sky) {
+        if (section != null) {
+            section.setBlockLight(new NibbleArray());
+            if (sky) {
+                section.setSkyLight(new NibbleArray());
             }
         }
-        return true;
+        return section != null;
     }
 
     @Override

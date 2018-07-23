@@ -4,26 +4,27 @@ import com.boydti.fawe.object.extent.FaweRegionExtent;
 import com.boydti.fawe.object.extent.HeightBoundExtent;
 import com.boydti.fawe.object.extent.MultiRegionExtent;
 import com.boydti.fawe.object.extent.SingleRegionExtent;
-import com.boydti.fawe.util.DelegateFaweQueue;
+import com.boydti.fawe.object.queue.DelegateFaweQueue;
 import com.sk89q.jnbt.CompoundTag;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.Vector2D;
 import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.blocks.BaseBlock;
+import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.world.biome.BaseBiome;
 
 public class MaskedFaweQueue extends DelegateFaweQueue {
     private FaweRegionExtent region;
 
-    public MaskedFaweQueue(FaweQueue parent, RegionWrapper[] mask) {
+    public MaskedFaweQueue(FaweQueue parent, Region[] mask) {
         super(parent);
         setMask(mask);
     }
 
-    public void setMask(RegionWrapper[] mask) {
+    public void setMask(Region[] mask) {
         switch (mask.length) {
             case 0:
-                region = new HeightBoundExtent(this, FaweLimit.MAX.copy(), Integer.MIN_VALUE, Integer.MAX_VALUE);
+                region = new HeightBoundExtent(this, FaweLimit.MAX.copy(), 0, 255);
                 break;
             case 1:
                 region = new SingleRegionExtent(this, FaweLimit.MAX.copy(), mask[0]);

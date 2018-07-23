@@ -26,17 +26,24 @@ import java.util.Map;
 
 public class FastWorldEditExtent extends AbstractDelegateExtent implements HasFaweQueue {
 
+    private final World world;
     private FaweQueue queue;
     private final int maxY;
 
     public FastWorldEditExtent(final World world, FaweQueue queue) {
-        super(world);
+        super(queue);
+        this.world = world;
         this.queue = queue;
         this.maxY = world.getMaxY();
     }
 
     public FaweQueue getQueue() {
         return queue;
+    }
+
+    @Override
+    public int getMaxY() {
+        return queue.getMaxY();
     }
 
     @Override
@@ -124,12 +131,12 @@ public class FastWorldEditExtent extends AbstractDelegateExtent implements HasFa
 
     @Override
     public List<? extends Entity> getEntities() {
-        return super.getEntities();
+        return world.getEntities();
     }
 
     @Override
     public List<? extends Entity> getEntities(final Region region) {
-        return super.getEntities(region);
+        return world.getEntities(region);
     }
 
     @Override

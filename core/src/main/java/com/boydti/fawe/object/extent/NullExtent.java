@@ -2,7 +2,6 @@ package com.boydti.fawe.object.extent;
 
 import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.object.FaweLimit;
-import com.boydti.fawe.object.RegionWrapper;
 import com.boydti.fawe.object.exception.FaweException;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.Vector2D;
@@ -115,13 +114,28 @@ public class NullExtent extends FaweRegionExtent {
     }
 
     @Override
-    public Collection<RegionWrapper> getRegions() {
+    public Collection<Region> getRegions() {
         return Collections.emptyList();
     }
 
     @Override
     protected Operation commitBefore() {
         return null;
+    }
+
+    @Override
+    public int getNearestSurfaceLayer(int x, int z, int y, int minY, int maxY) {
+        throw new FaweException(reason);
+    }
+
+    @Override
+    public int getNearestSurfaceTerrainBlock(int x, int z, int y, int minY, int maxY) {
+        throw new FaweException(reason);
+    }
+
+    @Override
+    public int getNearestSurfaceTerrainBlock(int x, int z, int y, int minY, int maxY, int failedMin, int failedMax) {
+        throw new FaweException(reason);
     }
 
     @Override

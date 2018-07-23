@@ -55,7 +55,7 @@ public interface HeightMap {
         }
     }
 
-    default int[][] generateHeightData(EditSession session, Mask mask, Vector pos, int size, int rotationMode, double yscale, boolean smooth, boolean towards, final boolean layers) {
+    default int[][] generateHeightData(EditSession session, Mask mask, Vector pos, int size, final int rotationMode, double yscale, boolean smooth, boolean towards, final boolean layers) {
         Vector top = session.getMaximumPoint();
         int maxY = top.getBlockY();
         int diameter = 2 * size + 1;
@@ -72,8 +72,9 @@ public interface HeightMap {
         }
         Vector mutablePos = new Vector(0, 0, 0);
         if (towards) {
-            double sizePow = Math.pow(size, yscale);
+            double sizePowInv = 1d / Math.pow(size, yscale);
             int targetY = pos.getBlockY();
+            int tmpY = targetY;
             for (int x = -size; x <= size; x++) {
                 int xx = centerX + x;
                 mutablePos.mutX(xx);
@@ -97,9 +98,9 @@ public interface HeightMap {
                     }
                     int height;
                     if (layers) {
-                        height = session.getNearestSurfaceLayer(xx, zz, pos.getBlockY(), 0, maxY);
+                        height = tmpY = session.getNearestSurfaceLayer(xx, zz, tmpY, 0, maxY);
                     } else {
-                        height = session.getNearestSurfaceTerrainBlock(xx, zz, pos.getBlockY(), 0, maxY);
+                        height = tmpY = session.getNearestSurfaceTerrainBlock(xx, zz, tmpY, 0, maxY);
                         if (height == -1) continue;
                     }
                     oldData[index] = height;
@@ -109,7 +110,7 @@ public interface HeightMap {
                     }
                     double raisePow = Math.pow(raise, yscale);
                     int diff = targetY - height;
-                    double raiseScaled = diff * (raisePow / sizePow);
+                    double raiseScaled = diff * (raisePow * sizePowInv);
                     double raiseScaledAbs = Math.abs(raiseScaled);
                     int random = PseudoRandom.random.random(256) < (int) ((Math.ceil(raiseScaledAbs) - Math.floor(raiseScaledAbs)) * 256) ? (diff > 0 ? 1 : -1) : 0;
                     int raiseScaledInt = (int) raiseScaled + random;

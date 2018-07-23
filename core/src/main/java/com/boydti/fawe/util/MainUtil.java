@@ -3,85 +3,38 @@ package com.boydti.fawe.util;
 import com.boydti.fawe.Fawe;
 import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.config.Settings;
-import com.boydti.fawe.object.FaweInputStream;
-import com.boydti.fawe.object.FaweOutputStream;
-import com.boydti.fawe.object.FawePlayer;
-import com.boydti.fawe.object.RegionWrapper;
-import com.boydti.fawe.object.RunnableVal;
-import com.boydti.fawe.object.RunnableVal2;
+import com.boydti.fawe.object.*;
 import com.boydti.fawe.object.changeset.CPUOptimizedChangeSet;
 import com.boydti.fawe.object.changeset.FaweStreamChangeSet;
 import com.boydti.fawe.object.io.AbstractDelegateOutputStream;
 import com.github.luben.zstd.ZstdInputStream;
 import com.github.luben.zstd.ZstdOutputStream;
-import com.sk89q.jnbt.CompoundTag;
-import com.sk89q.jnbt.DoubleTag;
-import com.sk89q.jnbt.EndTag;
-import com.sk89q.jnbt.IntTag;
-import com.sk89q.jnbt.ListTag;
-import com.sk89q.jnbt.StringTag;
-import com.sk89q.jnbt.Tag;
+import com.sk89q.jnbt.*;
 import com.sk89q.worldedit.entity.Entity;
 import com.sk89q.worldedit.history.changeset.ChangeSet;
 import com.sk89q.worldedit.util.Location;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileFilter;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
+import java.io.*;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.net.URLConnection;
+import java.net.*;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Scanner;
-import java.util.UUID;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.zip.DataFormatException;
-import java.util.zip.Deflater;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.Inflater;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.regex.Pattern;
+import java.util.zip.*;
 import javax.imageio.ImageIO;
-import net.jpountz.lz4.LZ4BlockInputStream;
-import net.jpountz.lz4.LZ4BlockOutputStream;
-import net.jpountz.lz4.LZ4Compressor;
-import net.jpountz.lz4.LZ4Factory;
-import net.jpountz.lz4.LZ4FastDecompressor;
-import net.jpountz.lz4.LZ4InputStream;
-import net.jpountz.lz4.LZ4Utils;
+import net.jpountz.lz4.*;
 
 public class MainUtil {
     /*
@@ -223,6 +176,27 @@ public class MainUtil {
         } catch (IOException e) {
             throw new AssertionError("walkFileTree will not throw IOException if the FileVisitor does not");
         }
+    }
+
+    public static File resolveRelative(File file) {
+        if (!file.exists()) return new File(relativize(file.getPath()));
+        return file;
+    }
+
+    public static String relativize(String path) {
+        String[] split = path.split(Pattern.quote(File.separator));
+        StringBuilder out = new StringBuilder();
+        int skip = 0;
+        int len = split.length - 1;
+        for (int i = len; i >= 0; i--) {
+            if (skip > 0) skip--;
+            else {
+                String arg = split[i];
+                if (arg.equals("..")) skip++;
+                else out.insert(0, arg + (i == len ? "" : File.separator));
+            }
+        }
+        return out.toString();
     }
 
     public static void forEachFile(Path path, final RunnableVal2<Path, BasicFileAttributes> onEach, Comparator<File> comparator) {
@@ -473,7 +447,7 @@ public class MainUtil {
                 };
                 writeTask.value = nonClosable;
                 writeTask.run();
-                output.flush();
+                nonClosable.flush();
                 writer.append(CRLF).flush();
                 writer.append("--" + boundary + "--").append(CRLF).flush();
             }
@@ -516,7 +490,7 @@ public class MainUtil {
 
     private static final Class[] parameters = new Class[]{URL.class};
 
-    public static void loadURLClasspath(URL u) throws IOException {
+    public static ClassLoader loadURLClasspath(URL u) throws IOException {
         ClassLoader sysloader = ClassLoader.getSystemClassLoader();
 
         Class sysclass = URLClassLoader.class;
@@ -524,11 +498,24 @@ public class MainUtil {
         try {
             Method method = sysclass.getDeclaredMethod("addURL", parameters);
             method.setAccessible(true);
-            method.invoke(sysloader, new Object[]{u});
-        } catch (Throwable t) {
-            t.printStackTrace();
-            throw new IOException("Error, could not add URL to system classloader");
+            if (sysloader instanceof URLClassLoader) {
+                method.invoke(sysloader, new Object[]{u});
+            } else {
+                ClassLoader loader = MainUtil.class.getClassLoader();
+                while (!(loader instanceof URLClassLoader) && loader.getParent() != null) {
+                    loader = loader.getParent();
+                }
+                if (loader instanceof URLClassLoader) {
+                    method.invoke(sysloader, new Object[]{u});
+                } else {
+                    loader = new URLClassLoader(new URL[]{u}, MainUtil.class.getClassLoader());
+                    return loader;
+                }
+            }
+        } catch (Throwable ignore) {
+            ignore.printStackTrace();
         }
+        return sysloader;
     }
 
     public static String getText(String url) throws IOException {
@@ -604,6 +591,21 @@ public class MainUtil {
         } catch (Exception e) {
             MainUtil.handleError(e);
         }
+    }
+
+    public static Thread[] getThreads() {
+        ThreadGroup rootGroup = Thread.currentThread( ).getThreadGroup( );
+        ThreadGroup parentGroup;
+        while ( ( parentGroup = rootGroup.getParent() ) != null ) {
+            rootGroup = parentGroup;
+        }
+        Thread[] threads = new Thread[ rootGroup.activeCount() ];
+        if (threads.length != 0) {
+            while (rootGroup.enumerate(threads, true) == threads.length) {
+                threads = new Thread[threads.length * 2];
+            }
+        }
+        return threads;
     }
 
     public static File copyFile(File sourceFile, File destFile) throws IOException {
@@ -946,10 +948,14 @@ public class MainUtil {
             int innerArrayLength = Array.getLength(arr);
             Class component = arr.getClass().getComponentType();
             Object newInnerArray = Array.newInstance(component, innerArrayLength);
-            //copy each elem of the array
-            for (int i = 0; i < innerArrayLength; i++) {
-                Object elem = copyNd(Array.get(arr, i));
-                Array.set(newInnerArray, i, elem);
+            if (component.isPrimitive()) {
+                System.arraycopy(arr, 0, newInnerArray, 0, innerArrayLength);
+            } else {
+                //copy each elem of the array
+                for (int i = 0; i < innerArrayLength; i++) {
+                    Object elem = copyNd(Array.get(arr, i));
+                    Array.set(newInnerArray, i, elem);
+                }
             }
             return newInnerArray;
         } else {
@@ -1038,30 +1044,45 @@ public class MainUtil {
     }
 
     public static void deleteOlder(File directory, final long timeDiff) {
+        deleteOlder(directory, timeDiff, true);
+    }
+
+    public static void deleteOlder(File directory, final long timeDiff, boolean printDebug) {
         final long now = System.currentTimeMillis();
+        ForkJoinPool pool = new ForkJoinPool();
         iterateFiles(directory, new RunnableVal<File>() {
             @Override
             public void run(File file) {
                 long age = now - file.lastModified();
                 if (age > timeDiff) {
-                    file.delete();
-                    BBC.FILE_DELETED.send(null, file);
+                    pool.submit(() -> file.delete());
+                    if (printDebug) BBC.FILE_DELETED.send(null, file);
                 }
             }
         });
+        pool.shutdown();
+        try {
+            pool.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     public static boolean deleteDirectory(File directory) {
+        return deleteDirectory(directory, true);
+    }
+
+    public static boolean deleteDirectory(File directory, boolean printDebug) {
         if (directory.exists()) {
             File[] files = directory.listFiles();
             if (null != files) {
                 for (int i = 0; i < files.length; i++) {
                     File file = files[i];
                     if (file.isDirectory()) {
-                        deleteDirectory(files[i]);
+                        deleteDirectory(files[i], printDebug);
                     } else {
                         file.delete();
-                        BBC.FILE_DELETED.send(null, file);
+                        if (printDebug) BBC.FILE_DELETED.send(null, file);
                     }
                 }
             }

@@ -7,60 +7,20 @@ import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.object.FawePlayer;
 import com.boydti.fawe.object.brush.visualization.VisualQueue;
 import com.boydti.fawe.regions.general.plot.PlotSquaredFeature;
-import com.boydti.fawe.util.CachedTextureUtil;
-import com.boydti.fawe.util.CleanTextureUtil;
-import com.boydti.fawe.util.FaweTimer;
-import com.boydti.fawe.util.MainUtil;
-import com.boydti.fawe.util.MemUtil;
-import com.boydti.fawe.util.RandomTextureUtil;
-import com.boydti.fawe.util.TaskManager;
-import com.boydti.fawe.util.TextureUtil;
-import com.boydti.fawe.util.Updater;
-import com.boydti.fawe.util.WEManager;
+import com.boydti.fawe.util.*;
 import com.boydti.fawe.util.chat.ChatManager;
 import com.boydti.fawe.util.chat.PlainChatManager;
 import com.boydti.fawe.util.cui.CUI;
 import com.boydti.fawe.util.metrics.BStats;
-import com.sk89q.jnbt.NBTInputStream;
-import com.sk89q.jnbt.NBTOutputStream;
-import com.sk89q.worldedit.BlockVector;
-import com.sk89q.worldedit.BlockWorldVector;
-import com.sk89q.worldedit.CuboidClipboard;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.LocalSession;
-import com.sk89q.worldedit.PlayerDirection;
+import com.sk89q.jnbt.*;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.Vector2D;
-import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BaseItem;
 import com.sk89q.worldedit.blocks.BlockData;
-import com.sk89q.worldedit.command.BiomeCommands;
-import com.sk89q.worldedit.command.BrushCommands;
-import com.sk89q.worldedit.command.BrushOptionsCommands;
-import com.sk89q.worldedit.command.ChunkCommands;
-import com.sk89q.worldedit.command.ClipboardCommands;
-import com.sk89q.worldedit.command.FlattenedClipboardTransform;
-import com.sk89q.worldedit.command.GenerationCommands;
-import com.sk89q.worldedit.command.HistoryCommands;
-import com.sk89q.worldedit.command.NavigationCommands;
-import com.sk89q.worldedit.command.OptionsCommands;
-import com.sk89q.worldedit.command.RegionCommands;
-import com.sk89q.worldedit.command.SchematicCommands;
-import com.sk89q.worldedit.command.ScriptingCommands;
-import com.sk89q.worldedit.command.SnapshotCommands;
-import com.sk89q.worldedit.command.SnapshotUtilCommands;
-import com.sk89q.worldedit.command.SuperPickaxeCommands;
-import com.sk89q.worldedit.command.ToolCommands;
-import com.sk89q.worldedit.command.UtilityCommands;
-import com.sk89q.worldedit.command.WorldEditCommands;
+import com.sk89q.worldedit.command.*;
 import com.sk89q.worldedit.command.composition.SelectionCommand;
-import com.sk89q.worldedit.command.tool.AreaPickaxe;
-import com.sk89q.worldedit.command.tool.BrushTool;
-import com.sk89q.worldedit.command.tool.FloodFillTool;
-import com.sk89q.worldedit.command.tool.LongRangeBuildTool;
-import com.sk89q.worldedit.command.tool.RecursivePickaxe;
-import com.sk89q.worldedit.command.tool.SinglePickaxe;
+import com.sk89q.worldedit.command.tool.*;
 import com.sk89q.worldedit.command.tool.brush.GravityBrush;
 import com.sk89q.worldedit.command.util.EntityRemover;
 import com.sk89q.worldedit.event.extent.EditSessionEvent;
@@ -68,11 +28,7 @@ import com.sk89q.worldedit.extension.factory.DefaultBlockParser;
 import com.sk89q.worldedit.extension.factory.DefaultMaskParser;
 import com.sk89q.worldedit.extension.factory.DefaultTransformParser;
 import com.sk89q.worldedit.extension.factory.HashTagPatternParser;
-import com.sk89q.worldedit.extension.platform.AbstractPlayerActor;
-import com.sk89q.worldedit.extension.platform.Actor;
-import com.sk89q.worldedit.extension.platform.CommandManager;
-import com.sk89q.worldedit.extension.platform.PlatformManager;
-import com.sk89q.worldedit.extension.platform.PlayerProxy;
+import com.sk89q.worldedit.extension.platform.*;
 import com.sk89q.worldedit.extent.AbstractDelegateExtent;
 import com.sk89q.worldedit.extent.MaskingExtent;
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard;
@@ -81,54 +37,29 @@ import com.sk89q.worldedit.extent.clipboard.io.SchematicReader;
 import com.sk89q.worldedit.extent.clipboard.io.SchematicWriter;
 import com.sk89q.worldedit.extent.inventory.BlockBagExtent;
 import com.sk89q.worldedit.extent.transform.BlockTransformExtent;
+import com.sk89q.worldedit.function.CombinedRegionFunction;
 import com.sk89q.worldedit.function.block.BlockReplace;
 import com.sk89q.worldedit.function.block.ExtentBlockCopy;
 import com.sk89q.worldedit.function.entity.ExtentEntityCopy;
-import com.sk89q.worldedit.function.mask.AbstractExtentMask;
-import com.sk89q.worldedit.function.mask.AbstractMask;
-import com.sk89q.worldedit.function.mask.BlockMask;
-import com.sk89q.worldedit.function.mask.FuzzyBlockMask;
-import com.sk89q.worldedit.function.mask.Mask;
-import com.sk89q.worldedit.function.mask.MaskUnion;
-import com.sk89q.worldedit.function.mask.Masks;
-import com.sk89q.worldedit.function.mask.OffsetMask;
-import com.sk89q.worldedit.function.mask.SolidBlockMask;
+import com.sk89q.worldedit.function.mask.*;
 import com.sk89q.worldedit.function.operation.ChangeSetExecutor;
 import com.sk89q.worldedit.function.operation.ForwardExtentCopy;
 import com.sk89q.worldedit.function.operation.Operations;
-import com.sk89q.worldedit.function.pattern.AbstractPattern;
-import com.sk89q.worldedit.function.pattern.BlockPattern;
-import com.sk89q.worldedit.function.pattern.ClipboardPattern;
-import com.sk89q.worldedit.function.pattern.Pattern;
-import com.sk89q.worldedit.function.pattern.Patterns;
-import com.sk89q.worldedit.function.pattern.RandomPattern;
-import com.sk89q.worldedit.function.visitor.BreadthFirstSearch;
-import com.sk89q.worldedit.function.visitor.DownwardVisitor;
-import com.sk89q.worldedit.function.visitor.EntityVisitor;
-import com.sk89q.worldedit.function.visitor.FlatRegionVisitor;
-import com.sk89q.worldedit.function.visitor.LayerVisitor;
-import com.sk89q.worldedit.function.visitor.NonRisingVisitor;
-import com.sk89q.worldedit.function.visitor.RecursiveVisitor;
-import com.sk89q.worldedit.function.visitor.RegionVisitor;
+import com.sk89q.worldedit.function.pattern.*;
+import com.sk89q.worldedit.function.visitor.*;
 import com.sk89q.worldedit.history.change.EntityCreate;
 import com.sk89q.worldedit.history.change.EntityRemove;
 import com.sk89q.worldedit.internal.LocalWorldAdapter;
 import com.sk89q.worldedit.internal.command.WorldEditBinding;
 import com.sk89q.worldedit.internal.expression.Expression;
-import com.sk89q.worldedit.internal.expression.runtime.ExpressionEnvironment;
-import com.sk89q.worldedit.internal.expression.runtime.For;
-import com.sk89q.worldedit.internal.expression.runtime.Functions;
+import com.sk89q.worldedit.internal.expression.runtime.*;
 import com.sk89q.worldedit.math.convolution.HeightMap;
 import com.sk89q.worldedit.math.interpolation.KochanekBartelsInterpolation;
 import com.sk89q.worldedit.math.transform.AffineTransform;
 import com.sk89q.worldedit.regions.CuboidRegion;
-import com.sk89q.worldedit.regions.selector.ConvexPolyhedralRegionSelector;
-import com.sk89q.worldedit.regions.selector.CuboidRegionSelector;
-import com.sk89q.worldedit.regions.selector.CylinderRegionSelector;
-import com.sk89q.worldedit.regions.selector.EllipsoidRegionSelector;
-import com.sk89q.worldedit.regions.selector.ExtendingCuboidRegionSelector;
-import com.sk89q.worldedit.regions.selector.Polygonal2DRegionSelector;
-import com.sk89q.worldedit.regions.selector.SphereRegionSelector;
+import com.sk89q.worldedit.regions.CylinderRegion;
+import com.sk89q.worldedit.regions.EllipsoidRegion;
+import com.sk89q.worldedit.regions.selector.*;
 import com.sk89q.worldedit.regions.shape.ArbitraryShape;
 import com.sk89q.worldedit.regions.shape.WorldEditExpressionEnvironment;
 import com.sk89q.worldedit.session.ClipboardHolder;
@@ -138,9 +69,7 @@ import com.sk89q.worldedit.session.request.Request;
 import com.sk89q.worldedit.util.command.SimpleCommandMapping;
 import com.sk89q.worldedit.util.command.SimpleDispatcher;
 import com.sk89q.worldedit.util.command.fluent.DispatcherNode;
-import com.sk89q.worldedit.util.command.parametric.ParameterData;
-import com.sk89q.worldedit.util.command.parametric.ParametricBuilder;
-import com.sk89q.worldedit.util.command.parametric.ParametricCallable;
+import com.sk89q.worldedit.util.command.parametric.*;
 import com.sk89q.worldedit.util.formatting.Fragment;
 import com.sk89q.worldedit.util.formatting.component.CommandListBox;
 import com.sk89q.worldedit.util.formatting.component.CommandUsageBox;
@@ -155,11 +84,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryUsage;
-import java.util.Collection;
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
@@ -225,8 +150,7 @@ public class Fawe {
     private DefaultTransformParser transformParser;
     private ChatManager chatManager = new PlainChatManager();
 
-//    @Deprecated
-//    private boolean isJava8 = MainUtil.getJavaVersion() >= 1.8;
+    private BStats stats;
 
     /**
      * Get the implementation specific class
@@ -267,7 +191,7 @@ public class Fawe {
         if (INSTANCE != null) {
             INSTANCE.IMP.debug(s);
         } else {
-            System.out.println(s);
+            System.out.println(BBC.stripColor(BBC.color(s)));
         }
     }
 
@@ -294,13 +218,20 @@ public class Fawe {
          * Implementation dependent stuff
          */
         this.setupConfigs();
-        MainUtil.deleteOlder(MainUtil.getFile(IMP.getDirectory(), Settings.IMP.PATHS.HISTORY), TimeUnit.DAYS.toMillis(Settings.IMP.HISTORY.DELETE_AFTER_DAYS));
-        MainUtil.deleteOlder(MainUtil.getFile(IMP.getDirectory(), Settings.IMP.PATHS.CLIPBOARD), TimeUnit.DAYS.toMillis(Settings.IMP.CLIPBOARD.DELETE_AFTER_DAYS));
 
         TaskManager.IMP = this.IMP.getTaskManager();
+
+        TaskManager.IMP.async(new Runnable() {
+            @Override
+            public void run() {
+                MainUtil.deleteOlder(MainUtil.getFile(IMP.getDirectory(), Settings.IMP.PATHS.HISTORY), TimeUnit.DAYS.toMillis(Settings.IMP.HISTORY.DELETE_AFTER_DAYS), false);
+                MainUtil.deleteOlder(MainUtil.getFile(IMP.getDirectory(), Settings.IMP.PATHS.CLIPBOARD), TimeUnit.DAYS.toMillis(Settings.IMP.CLIPBOARD.DELETE_AFTER_DAYS), false);
+            }
+        });
+
         if (Settings.IMP.METRICS) {
             try {
-                BStats stats = new BStats();
+                this.stats = new BStats();
                 this.IMP.startMetrics();
                 TaskManager.IMP.later(new Runnable() {
                     @Override
@@ -320,44 +251,50 @@ public class Fawe {
         this.timer = new FaweTimer();
         Fawe.this.IMP.setupVault();
 
-        // Delayed worldedit setup
-        TaskManager.IMP.later(new Runnable() {
-            @Override
-            public void run() {
+        File jar = MainUtil.getJarFile();
+        File extraBlocks = MainUtil.copyFile(jar, "extrablocks.json", null);
+        if (extraBlocks != null && extraBlocks.exists()) {
+            TaskManager.IMP.task(() -> {
                 try {
-                    transformParser = new DefaultTransformParser(getWorldEdit());
-                    visualQueue = new VisualQueue();
-                    WEManager.IMP.managers.addAll(Fawe.this.IMP.getMaskManagers());
-                    WEManager.IMP.managers.add(new PlotSquaredFeature());
-                    Fawe.debug("Plugin 'PlotSquared' found. Using it now.");
-                } catch (Throwable e) {
+                    BundledBlockData.getInstance().loadFromResource();
+                    BundledBlockData.getInstance().add(extraBlocks.toURI().toURL(), true);
+                } catch (Throwable ignore) {
+                    ignore.printStackTrace();
+                    Fawe.debug("Invalid format: extrablocks.json");
                 }
-            }
+            });
+        }
+
+        // Delayed worldedit setup
+        TaskManager.IMP.later(() -> {
+            try {
+                transformParser = new DefaultTransformParser(getWorldEdit());
+                visualQueue = new VisualQueue(3);
+                WEManager.IMP.managers.addAll(Fawe.this.IMP.getMaskManagers());
+                WEManager.IMP.managers.add(new PlotSquaredFeature());
+                Fawe.debug("Plugin 'PlotSquared' found. Using it now.");
+            } catch (Throwable e) {}
         }, 0);
 
         TaskManager.IMP.repeat(timer, 1);
 
-        if (Settings.IMP.UPDATE) {
+        if (!Settings.IMP.UPDATE.equalsIgnoreCase("false")) {
             // Delayed updating
             updater = new Updater();
-            TaskManager.IMP.async(new Runnable() {
-                @Override
-                public void run() {
-                    update();
-                }
-            });
-            TaskManager.IMP.repeatAsync(new Runnable() {
-                @Override
-                public void run() {
-                    update();
-                }
-            }, 36000);
+            TaskManager.IMP.async(() -> update());
+            TaskManager.IMP.repeatAsync(() -> update(), 36000);
+        }
+    }
+
+    public void onDisable() {
+        if (stats != null) {
+            stats.close();
         }
     }
 
     private boolean update() {
         if (updater != null) {
-            updater.update(IMP.getPlatform(), getVersion());
+            updater.getUpdate(IMP.getPlatform(), getVersion());
             return true;
         }
         return false;
@@ -481,6 +418,9 @@ public class Fawe {
         MainUtil.copyFile(MainUtil.getJarFile(), "de/message.yml", null);
         MainUtil.copyFile(MainUtil.getJarFile(), "ru/message.yml", null);
         MainUtil.copyFile(MainUtil.getJarFile(), "ru/commands.yml", null);
+        MainUtil.copyFile(MainUtil.getJarFile(), "tr/message.yml", null);
+        MainUtil.copyFile(MainUtil.getJarFile(), "es/message.yml", null);
+        MainUtil.copyFile(MainUtil.getJarFile(), "es/commands.yml", null);
         // Setting up config.yml
         File file = new File(this.IMP.getDirectory(), "config.yml");
         Settings.IMP.PLATFORM = IMP.getPlatform().replace("\"", "");
@@ -522,6 +462,9 @@ public class Fawe {
             Request.inject(); // Custom pattern extent
             // Commands
             Commands.load(new File(INSTANCE.IMP.getDirectory(), "commands.yml"));
+            ArgumentStack.inject0(); // Mark/reset
+            ContextArgumentStack.inject();
+            StringArgumentStack.inject();
             Commands.inject(); // Translations
             BiomeCommands.inject(); // Translations + Optimizations
             ChunkCommands.inject(); // Translations + Optimizations
@@ -595,6 +538,8 @@ public class Fawe {
             ClipboardHolder.inject(); // Closeable
             // Regions
             CuboidRegion.inject(); // Optimizations
+            CylinderRegion.inject(); // Optimizations
+            EllipsoidRegion.inject(); // Optimizations
             // Extents
             MaskingExtent.inject(); // Features
             BlockTransformExtent.inject(); // Fix for cache not being mutable
@@ -640,6 +585,7 @@ public class Fawe {
             ExtentBlockCopy.inject(); // Optimizations
             BlockReplace.inject(); // Optimizations + Features
             ForwardExtentCopy.inject(); // Fixes + optimizations
+            CombinedRegionFunction.inject(); // Optimizations
             ChangeSetExecutor.inject(); // Optimizations
             // Expression
             ExpressionEnvironment.inject(); // Optimizations + features
@@ -647,22 +593,18 @@ public class Fawe {
             Expression.inject(); // Optimizations
             Functions.inject(); // Optimizations
             For.inject(); // Fixes
+            SimpleFor.inject(); // Fixes
+            While.inject(); // Fixes
             // BlockData
             BlockData.inject(); // Temporary fix for 1.9.4
             BundledBlockData.inject(); // Add custom rotation
-            File jar = MainUtil.getJarFile();
-            File extraBlocks = MainUtil.copyFile(jar, "extrablocks.json", null);
-            if (extraBlocks != null && extraBlocks.exists()) {
-                try {
-                    BundledBlockData.getInstance().loadFromResource();
-                    BundledBlockData.getInstance().add(extraBlocks.toURI().toURL(), true);
-                } catch (Throwable ignore) {
-                    Fawe.debug("Invalid format: extrablocks.json");
-                }
-            }
             // NBT
             NBTInputStream.inject(); // Add actual streaming + Optimizations + New methods
             NBTOutputStream.inject(); // New methods
+            Tag.inject(); // Expose raw data
+            CompoundTag.inject(); // Expose raw data
+            CompoundTagBuilder.inject(); // make accessible
+            ListTag.inject(); // Expose raw data
             // Math
             KochanekBartelsInterpolation.inject(); // Optimizations
             AffineTransform.inject(); // Optimizations
@@ -689,32 +631,34 @@ public class Fawe {
             debug(" - Any other errors in the startup log");
             debug("Contact Empire92 if you need assistance:");
             debug(" - Send me a PM or ask on IRC/Discord");
-            debug(" - http://webchat.esper.net/?nick=&channels=IntellectualCrafters");
+            debug(" - https://discord.gg/ngZCzbU");
             debug("=======================================");
         }
-        try {
-            com.github.luben.zstd.util.Native.load();
-        } catch (Throwable e) {
-            if (Settings.IMP.CLIPBOARD.COMPRESSION_LEVEL > 6 || Settings.IMP.HISTORY.COMPRESSION_LEVEL > 6) {
-                Settings.IMP.CLIPBOARD.COMPRESSION_LEVEL = Math.min(6, Settings.IMP.CLIPBOARD.COMPRESSION_LEVEL);
-                Settings.IMP.HISTORY.COMPRESSION_LEVEL = Math.min(6, Settings.IMP.HISTORY.COMPRESSION_LEVEL);
-                debug("====== ZSTD COMPRESSION BINDING NOT FOUND ======");
+        if (!Settings.IMP.EXPERIMENTAL.DISABLE_NATIVES) {
+            try {
+                com.github.luben.zstd.util.Native.load();
+            } catch (Throwable e) {
+                if (Settings.IMP.CLIPBOARD.COMPRESSION_LEVEL > 6 || Settings.IMP.HISTORY.COMPRESSION_LEVEL > 6) {
+                    Settings.IMP.CLIPBOARD.COMPRESSION_LEVEL = Math.min(6, Settings.IMP.CLIPBOARD.COMPRESSION_LEVEL);
+                    Settings.IMP.HISTORY.COMPRESSION_LEVEL = Math.min(6, Settings.IMP.HISTORY.COMPRESSION_LEVEL);
+                    debug("====== ZSTD COMPRESSION BINDING NOT FOUND ======");
+                    debug(e);
+                    debug("===============================================");
+                    debug("FAWE will work but won't compress data as much");
+                    debug("===============================================");
+                }
+            }
+            try {
+                net.jpountz.util.Native.load();
+            } catch (Throwable e) {
+                debug("====== LZ4 COMPRESSION BINDING NOT FOUND ======");
                 debug(e);
                 debug("===============================================");
-                debug("FAWE will work but won't compress data as much");
+                debug("FAWE will work but compression will be slower");
+                debug(" - Try updating your JVM / OS");
+                debug(" - Report this issue if you cannot resolve it");
                 debug("===============================================");
             }
-        }
-        try {
-            net.jpountz.util.Native.load();
-        } catch (Throwable e) {
-            debug("====== LZ4 COMPRESSION BINDING NOT FOUND ======");
-            debug(e);
-            debug("===============================================");
-            debug("FAWE will work but compression will be slower");
-            debug(" - Try updating your JVM / OS");
-            debug(" - Report this issue if you cannot resolve it");
-            debug("===============================================");
         }
         try {
             String arch = System.getenv("PROCESSOR_ARCHITECTURE");
@@ -801,6 +745,7 @@ public class Fawe {
     public <T> void register(FawePlayer<T> player) {
         players.put(player.getName(), player);
         playersUUID.put(player.getUUID(), player);
+
     }
 
     public <T> void unregister(String name) {

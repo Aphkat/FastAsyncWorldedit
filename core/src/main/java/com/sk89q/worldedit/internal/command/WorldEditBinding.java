@@ -19,6 +19,7 @@
 
 package com.sk89q.worldedit.internal.command;
 
+import com.boydti.fawe.object.FawePlayer;
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.IncompleteRegionException;
 import com.sk89q.worldedit.LocalSession;
@@ -85,7 +86,7 @@ public class WorldEditBinding extends BindingHelper {
     public Object getSelection(ArgumentStack context, Selection selection) throws IncompleteRegionException, ParameterException {
         Player sender = getPlayer(context);
         LocalSession session = worldEdit.getSessionManager().get(sender);
-        return session.getSelection(sender.getWorld());
+        return session.getSelection(FawePlayer.wrap(sender).getWorldForEditing());
     }
 
     /**
@@ -217,6 +218,14 @@ public class WorldEditBinding extends BindingHelper {
         }
     }
 
+    @BindingMatch(type = Pattern.class,
+            behavior = BindingBehavior.CONSUMES,
+            consumedCount = 1)
+    @Deprecated
+    public com.sk89q.worldedit.patterns.Pattern getLegacyPattern(ArgumentStack context) throws ParameterException, WorldEditException {
+        return getPattern(context);
+    }
+
     /**
      * Gets an {@link Mask} from a {@link ArgumentStack}.
      *
@@ -244,6 +253,14 @@ public class WorldEditBinding extends BindingHelper {
         } catch (NoMatchException e) {
             throw new ParameterException(e.getMessage(), e);
         }
+    }
+
+    @BindingMatch(type = com.sk89q.worldedit.masks.Mask.class,
+            behavior = BindingBehavior.CONSUMES,
+            consumedCount = 1)
+    @Deprecated
+    public com.sk89q.worldedit.masks.Mask getLegacyMask(ArgumentStack context) throws ParameterException, WorldEditException {
+        return getMask(context);
     }
 
     /**

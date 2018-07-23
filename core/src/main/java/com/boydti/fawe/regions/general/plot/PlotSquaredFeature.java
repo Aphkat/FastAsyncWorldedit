@@ -1,13 +1,17 @@
 package com.boydti.fawe.regions.general.plot;
 
 import com.boydti.fawe.Fawe;
+import com.boydti.fawe.FaweAPI;
 import com.boydti.fawe.object.FawePlayer;
 import com.boydti.fawe.regions.FaweMask;
 import com.boydti.fawe.regions.FaweMaskManager;
+import com.boydti.fawe.regions.SimpleRegion;
 import com.boydti.fawe.regions.general.RegionFilter;
 import com.intellectualcrafters.plot.PS;
 import com.intellectualcrafters.plot.commands.MainCommand;
 import com.intellectualcrafters.plot.config.Settings;
+import com.intellectualcrafters.plot.database.DBFunc;
+import com.intellectualcrafters.plot.flag.Flags;
 import com.intellectualcrafters.plot.generator.HybridPlotManager;
 import com.intellectualcrafters.plot.object.Plot;
 import com.intellectualcrafters.plot.object.PlotArea;
@@ -15,10 +19,13 @@ import com.intellectualcrafters.plot.object.PlotPlayer;
 import com.intellectualcrafters.plot.object.RegionWrapper;
 import com.intellectualcrafters.plot.util.ChunkManager;
 import com.intellectualcrafters.plot.util.SchematicHandler;
+import com.intellectualcrafters.plot.util.UUIDHandler;
 import com.intellectualcrafters.plot.util.block.GlobalBlockQueue;
 import com.intellectualcrafters.plot.util.block.QueueProvider;
 import com.plotsquared.listener.WEManager;
 import com.sk89q.worldedit.BlockVector;
+import com.sk89q.worldedit.regions.CuboidRegion;
+import com.sk89q.worldedit.regions.Region;
 import java.util.HashSet;
 import java.util.UUID;
 
@@ -45,6 +52,10 @@ public class PlotSquaredFeature extends FaweMaskManager {
         } catch (Throwable e) {
             Fawe.debug("You need to update PlotSquared to access the CFI and REPLACEALL commands");
         }
+    }
+
+    public static String getName(UUID uuid) {
+        return UUIDHandler.getName(uuid);
     }
 
     private void setupBlockQueue() {
@@ -83,7 +94,7 @@ public class PlotSquaredFeature extends FaweMaskManager {
             return false;
         }
         UUID uid = fp.getUUID();
-        return (plot.isOwner(uid) || (type == MaskType.MEMBER && (plot.getTrusted().contains(uid) || (plot.getMembers().contains(uid) && fp.hasPermission("fawe.plotsquared.member"))))) || fp.hasPermission("fawe.plotsquared.admin");
+        return !Flags.NO_WORLDEDIT.isTrue(plot) && ((plot.isOwner(uid) || (type == MaskType.MEMBER && (plot.getTrusted().contains(uid) || plot.getTrusted().contains(DBFunc.everyone)  || ((plot.getMembers().contains(uid) || plot.getMembers().contains(DBFunc.everyone)) && fp.hasPermission("fawe.plotsquared.member"))))) || fp.hasPermission("fawe.plotsquared.admin"));
     }
 
     @Override
@@ -108,7 +119,7 @@ public class PlotSquaredFeature extends FaweMaskManager {
         }
         PlotArea area = pp.getApplicablePlotArea();
         int min = area != null ? area.MIN_BUILD_HEIGHT : 0;
-        int max = area != null ? area.MAX_BUILD_HEIGHT : 255;
+        int max = area != null ? Math.min(255, area.MAX_BUILD_HEIGHT) : 255;
         final HashSet<com.boydti.fawe.object.RegionWrapper> faweRegions = new HashSet<>();
         for (final RegionWrapper current : regions) {
             faweRegions.add(new com.boydti.fawe.object.RegionWrapper(current.minX, current.maxX, min, max, current.minZ, current.maxZ));
@@ -117,31 +128,42 @@ public class PlotSquaredFeature extends FaweMaskManager {
         final BlockVector pos1 = new BlockVector(region.minX, min, region.minZ);
         final BlockVector pos2 = new BlockVector(region.maxX, max, region.maxZ);
         final Plot finalPlot = plot;
-        return new FaweMask(pos1, pos2) {
-            @Override
-            public String getName() {
-                return "PLOT^2";
-            }
+        if (Settings.Done.RESTRICT_BUILDING && Flags.DONE.isSet(finalPlot) || regions.isEmpty()) {
+            return null;
+        }
 
-            @Override
-            public boolean contains(BlockVector loc) {
-                return WEManager.maskContains(regions, loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
-            }
+        Region maskedRegion;
+        if (regions.size() == 1) {
+            maskedRegion = new CuboidRegion(pos1, pos2);
+        } else {
+            maskedRegion = new SimpleRegion(FaweAPI.getWorld(area.worldname), pos1, pos2) {
+                @Override
+                public boolean contains(int x, int y, int z) {
+                    return WEManager.maskContains(regions, x, y, z);
+                }
 
+                @Override
+                public boolean contains(int x, int z) {
+                    return WEManager.maskContains(regions, x, z);
+                }
+            };
+        }
+
+        return new FaweMask(maskedRegion, "PLOT^2") {
             @Override
             public boolean isValid(FawePlayer player, MaskType type) {
+                if (Settings.Done.RESTRICT_BUILDING && Flags.DONE.isSet(finalPlot)) {
+                    return false;
+                }
                 return isAllowed(player, finalPlot, type);
-            }
-
-            @Override
-            public HashSet<com.boydti.fawe.object.RegionWrapper> getRegions() {
-                return faweRegions;
             }
         };
     }
 
     @Override
     public RegionFilter getFilter(String world) {
-        return new PlotRegionFilter(PS.get().getPlotArea(world, null));
+        PlotArea area = PS.get().getPlotArea(world, null);
+        if (area != null) return new PlotRegionFilter(area);
+        return null;
     }
 }

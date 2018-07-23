@@ -185,7 +185,7 @@ public class SpongeChunk_1_11 extends CharFaweChunk<Chunk, SpongeQueue_1_11> {
                             entities[i] = new ClassInheritanceMultiMap<>(Entity.class);
                         }
                     }
-                } else {
+                } else if (!getParent().getSettings().EXPERIMENTAL.KEEP_ENTITIES_IN_BLOCKS) {
                     char[] array = this.getIdArray(i);
                     Collection<Entity> ents = new ArrayList<>(entities[i]);
                     synchronized (SpongeChunk_1_11.class) {
@@ -258,24 +258,31 @@ public class SpongeChunk_1_11 extends CharFaweChunk<Chunk, SpongeQueue_1_11> {
             }
             // Trim tiles
             if (!tiles.isEmpty()) {
-                Set<Map.Entry<BlockPos, TileEntity>> entryset = tiles.entrySet();
-                Iterator<Map.Entry<BlockPos, TileEntity>> iterator = entryset.iterator();
-                while (iterator.hasNext()) {
-                    Map.Entry<BlockPos, TileEntity> tile = iterator.next();
-                    BlockPos pos = tile.getKey();
-                    int lx = pos.getX() & 15;
-                    int ly = pos.getY();
-                    int lz = pos.getZ() & 15;
-                    int j = FaweCache.CACHE_I[ly][lz][lx];
-                    char[] array = this.getIdArray(j);
-                    if (array == null) {
-                        continue;
-                    }
-                    int k = FaweCache.CACHE_J[ly][lz][lx];
-                    if (array[k] != 0) {
-                        synchronized (SpongeChunk_1_11.class) {
+                synchronized (SpongeChunk_1_11.class) {
+                    List<TileEntity> invalidate = null;
+                    Set<Map.Entry<BlockPos, TileEntity>> entryset = tiles.entrySet();
+                    Iterator<Map.Entry<BlockPos, TileEntity>> iterator = entryset.iterator();
+                    while (iterator.hasNext()) {
+                        Map.Entry<BlockPos, TileEntity> tile = iterator.next();
+                        BlockPos pos = tile.getKey();
+                        int lx = pos.getX() & 15;
+                        int ly = pos.getY();
+                        int lz = pos.getZ() & 15;
+                        int j = FaweCache.CACHE_I[ly][lz][lx];
+                        char[] array = this.getIdArray(j);
+                        if (array == null) {
+                            continue;
+                        }
+                        int k = FaweCache.CACHE_J[ly][lz][lx];
+                        if (array[k] != 0) {
                             iterator.remove();
-                            tile.getValue().invalidate();
+                            if (invalidate == null) invalidate = new ArrayList<>();
+                            invalidate.add(tile.getValue());
+                        }
+                    }
+                    if (invalidate != null) {
+                        for (TileEntity tile : invalidate) {
+                            tile.invalidate();
                         }
                     }
                 }
@@ -371,28 +378,33 @@ public class SpongeChunk_1_11 extends CharFaweChunk<Chunk, SpongeQueue_1_11> {
             if (this.biomes != null) {
                 byte[] currentBiomes = nmsChunk.getBiomeArray();
                 for (int i = 0 ; i < this.biomes.length; i++) {
-                    if (this.biomes[i] != 0) {
-                        currentBiomes[i] = this.biomes[i];
+                    byte biome = this.biomes[i];
+                    if (biome != 0) {
+                        if (biome == -1) biome = 0;
+                        currentBiomes[i] = biome;
                     }
                 }
             }
             // Set tiles
             Map<Short, CompoundTag> tilesToSpawn = this.getTiles();
-
-            for (Map.Entry<Short, CompoundTag> entry : tilesToSpawn.entrySet()) {
-                CompoundTag nativeTag = entry.getValue();
-                short blockHash = entry.getKey();
-                int x = (blockHash >> 12 & 0xF) + bx;
-                int y = (blockHash & 0xFF);
-                int z = (blockHash >> 8 & 0xF) + bz;
-                BlockPos pos = new BlockPos(x, y, z); // Set pos
-                TileEntity tileEntity = nmsWorld.getTileEntity(pos);
-                if (tileEntity != null) {
-                    NBTTagCompound tag = (NBTTagCompound) SpongeQueue_1_11.methodFromNative.invoke(SpongeQueue_1_11.adapter, nativeTag);
-                    tag.setInteger("x", pos.getX());
-                    tag.setInteger("y", pos.getY());
-                    tag.setInteger("z", pos.getZ());
-                    tileEntity.readFromNBT(tag); // ReadTagIntoTile
+            if (!tilesToSpawn.isEmpty()) {
+                synchronized (SpongeChunk_1_11.class) {
+                    for (Map.Entry<Short, CompoundTag> entry : tilesToSpawn.entrySet()) {
+                        CompoundTag nativeTag = entry.getValue();
+                        short blockHash = entry.getKey();
+                        int x = (blockHash >> 12 & 0xF) + bx;
+                        int y = (blockHash & 0xFF);
+                        int z = (blockHash >> 8 & 0xF) + bz;
+                        BlockPos pos = new BlockPos(x, y, z); // Set pos
+                        TileEntity tileEntity = nmsWorld.getTileEntity(pos);
+                        if (tileEntity != null) {
+                            NBTTagCompound tag = (NBTTagCompound) SpongeQueue_1_11.methodFromNative.invoke(SpongeQueue_1_11.adapter, nativeTag);
+                            tag.setInteger("x", pos.getX());
+                            tag.setInteger("y", pos.getY());
+                            tag.setInteger("z", pos.getZ());
+                            tileEntity.readFromNBT(tag); // ReadTagIntoTile
+                        }
+                    }
                 }
             }
         } catch (Throwable e) {

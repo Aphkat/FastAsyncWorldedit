@@ -122,7 +122,7 @@ public class MCAQueue extends NMSMappedFaweQueue<FaweQueue, FaweChunk, FaweChunk
         int cbz = (cz << 4) - oZ;
 
         boolean changed = false;
-        for (int otherCZ = otherBCZ; otherCZ <= otherTCZ; otherCZ++) {
+            for (int otherCZ = otherBCZ; otherCZ <= otherTCZ; otherCZ++) {
             for (int otherCX = otherBCX; otherCX <= otherTCX; otherCX++) {
                 FaweChunk chunk;
                 synchronized (this) {
@@ -147,7 +147,7 @@ public class MCAQueue extends NMSMappedFaweQueue<FaweQueue, FaweChunk, FaweChunk
             }
         }
         return changed;
-    }
+}
 
     @Override
     public boolean setMCA(int mcaX, int mcaZ, RegionWrapper region, Runnable whileLocked, boolean save, boolean unload) {
@@ -530,7 +530,7 @@ public class MCAQueue extends NMSMappedFaweQueue<FaweQueue, FaweChunk, FaweChunk
                                                             mutableBlock.setChunk(chunk);
                                                             int bx = cx << 4;
                                                             int bz = cz << 4;
-                                                            for (int layer = 0; layer < chunk.ids.length; layer++) {
+                                                            for (int layer = 0; layer < 16; layer++) {
                                                                 if (chunk.doesSectionExist(layer)) {
                                                                     mutableBlock.setArrays(layer);
                                                                     int yStart = layer << 4;
@@ -620,6 +620,14 @@ public class MCAQueue extends NMSMappedFaweQueue<FaweQueue, FaweChunk, FaweChunk
     }
 
     @Override
+    public boolean supports(Capability capability) {
+        switch (capability) {
+            case CHANGE_TASKS: return false;
+        }
+        return super.supports(capability);
+    }
+
+    @Override
     public void relight(int x, int y, int z) {
         throw new UnsupportedOperationException("Not supported");
     }
@@ -677,6 +685,22 @@ public class MCAQueue extends NMSMappedFaweQueue<FaweQueue, FaweChunk, FaweChunk
                 parentNMS.setFullbright(sections);
             }
         }
+    }
+
+    @Override
+    public boolean removeSectionLighting(FaweChunk sections, int layer, boolean hasSky) {
+        if (sections.getClass() == MCAChunk.class) {
+            ((MCAChunk) sections).removeLight(layer);
+        } else if (parentNMS != null) {
+            int cx = sections.getX();
+            int cz = sections.getZ();
+            parentNMS.ensureChunkLoaded(cx, cz);
+            Object parentSections = parentNMS.getCachedSections(parentNMS.getWorld(), cx, cz);
+            if (parentSections != null) {
+                parentNMS.removeSectionLighting(sections, layer, hasSky);
+            }
+        }
+        return true;
     }
 
     @Override

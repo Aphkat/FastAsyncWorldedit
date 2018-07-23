@@ -25,61 +25,25 @@ import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.object.FaweLimit;
 import com.boydti.fawe.object.FawePlayer;
-import com.boydti.fawe.object.brush.BlendBall;
-import com.boydti.fawe.object.brush.BlobBrush;
-import com.boydti.fawe.object.brush.BrushSettings;
-import com.boydti.fawe.object.brush.CatenaryBrush;
-import com.boydti.fawe.object.brush.CircleBrush;
-import com.boydti.fawe.object.brush.CommandBrush;
-import com.boydti.fawe.object.brush.CopyPastaBrush;
-import com.boydti.fawe.object.brush.ErodeBrush;
-import com.boydti.fawe.object.brush.FlattenBrush;
-import com.boydti.fawe.object.brush.HeightBrush;
-import com.boydti.fawe.object.brush.LayerBrush;
-import com.boydti.fawe.object.brush.LineBrush;
-import com.boydti.fawe.object.brush.PopulateSchem;
-import com.boydti.fawe.object.brush.RaiseBrush;
-import com.boydti.fawe.object.brush.RecurseBrush;
-import com.boydti.fawe.object.brush.ScatterBrush;
-import com.boydti.fawe.object.brush.ScatterCommand;
-import com.boydti.fawe.object.brush.ScatterOverlayBrush;
-import com.boydti.fawe.object.brush.ShatterBrush;
-import com.boydti.fawe.object.brush.SplatterBrush;
-import com.boydti.fawe.object.brush.SplineBrush;
-import com.boydti.fawe.object.brush.StencilBrush;
-import com.boydti.fawe.object.brush.SurfaceSphereBrush;
-import com.boydti.fawe.object.brush.SurfaceSpline;
+import com.boydti.fawe.object.brush.*;
 import com.boydti.fawe.object.brush.heightmap.ScalableHeightMap;
 import com.boydti.fawe.object.brush.sweep.SweepBrush;
+import com.boydti.fawe.object.clipboard.MultiClipboardHolder;
 import com.boydti.fawe.object.mask.IdMask;
 import com.boydti.fawe.util.ColorUtil;
 import com.boydti.fawe.util.MathMan;
-import com.sk89q.minecraft.util.commands.Command;
-import com.sk89q.minecraft.util.commands.CommandContext;
-import com.sk89q.minecraft.util.commands.CommandLocals;
-import com.sk89q.minecraft.util.commands.CommandPermissions;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.EmptyClipboardException;
-import com.sk89q.worldedit.LocalConfiguration;
-import com.sk89q.worldedit.LocalSession;
-import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.WorldEditException;
+import com.boydti.fawe.util.image.ImageUtil;
+import com.sk89q.minecraft.util.commands.*;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
+import com.sk89q.worldedit.command.tool.BrushTool;
 import com.sk89q.worldedit.command.tool.InvalidToolBindException;
-import com.sk89q.worldedit.command.tool.brush.Brush;
-import com.sk89q.worldedit.command.tool.brush.ButcherBrush;
-import com.sk89q.worldedit.command.tool.brush.ClipboardBrush;
-import com.sk89q.worldedit.command.tool.brush.CylinderBrush;
-import com.sk89q.worldedit.command.tool.brush.GravityBrush;
-import com.sk89q.worldedit.command.tool.brush.HollowCylinderBrush;
-import com.sk89q.worldedit.command.tool.brush.HollowSphereBrush;
-import com.sk89q.worldedit.command.tool.brush.SmoothBrush;
-import com.sk89q.worldedit.command.tool.brush.SphereBrush;
+import com.sk89q.worldedit.command.tool.brush.*;
 import com.sk89q.worldedit.command.util.CreatureButcher;
 import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.extension.input.ParserContext;
+import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormat;
 import com.sk89q.worldedit.function.mask.BlockMask;
@@ -92,11 +56,8 @@ import com.sk89q.worldedit.util.command.binding.Range;
 import com.sk89q.worldedit.util.command.binding.Switch;
 import com.sk89q.worldedit.util.command.parametric.Optional;
 import java.awt.Color;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.net.URL;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
@@ -109,25 +70,11 @@ import java.util.List;
 @Command(aliases = {"brush", "br", "tool"},
         desc = "Commands to build and draw from far away. [More Info](https://git.io/vSPYf)"
 )
-public class BrushCommands extends MethodCommands {
+public class BrushCommands extends BrushProcessor {
 
     public BrushCommands(WorldEdit worldEdit) {
         super(worldEdit);
     }
-
-    private BrushSettings get(CommandContext context) throws InvalidToolBindException {
-        BrushSettings bs = new BrushSettings();
-        bs.addPermissions(getPermissions());
-        CommandLocals locals = context.getLocals();
-        if (locals != null) {
-            String args = (String) locals.get("arguments");
-            if (args != null) {
-                bs.addSetting(BrushSettings.SettingType.BRUSH, args.substring(args.indexOf(' ') + 1));
-            }
-        }
-        return bs;
-    }
-
 
     @Command(
             aliases = {"blendball", "bb", "blend"},
@@ -140,8 +87,8 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.blendball")
     public BrushSettings blendBallBrush(Player player, LocalSession session, @Optional("5") double radius, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context).setBrush(new BlendBall()).setSize(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context, new BlendBall()).setSize(radius);
     }
 
     @Command(
@@ -154,8 +101,8 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.erode")
     public BrushSettings erodeBrush(Player player, LocalSession session, @Optional("5") double radius, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context).setBrush(new ErodeBrush()).setSize(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context, new ErodeBrush()).setSize(radius);
     }
 
     @Command(
@@ -168,8 +115,8 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.pull")
     public BrushSettings pullBrush(Player player, LocalSession session, @Optional("5") double radius, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context).setBrush(new RaiseBrush()).setSize(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context, new RaiseBrush()).setSize(radius);
     }
 
     @Command(
@@ -183,8 +130,8 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.sphere")
     public BrushSettings circleBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("5") double radius, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context).setBrush(new CircleBrush(player)).setSize(radius).setFill(fill);
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context, new CircleBrush(player)).setSize(radius).setFill(fill);
     }
 
     @Command(
@@ -199,9 +146,9 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.recursive")
     public BrushSettings recursiveBrush(Player player, LocalSession session, EditSession editSession, Pattern fill, @Optional("5") double radius, @Switch('d') boolean depthFirst, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context)
-                .setBrush(new RecurseBrush(depthFirst))
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context,
+                new RecurseBrush(depthFirst))
                 .setSize(radius)
                 .setFill(fill)
                 .setMask(new IdMask(editSession));
@@ -222,9 +169,9 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.line")
     public BrushSettings lineBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("0") double radius, @Switch('h') boolean shell, @Switch('s') boolean select, @Switch('f') boolean flat, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context)
-                .setBrush(new LineBrush(shell, select, flat))
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context,
+                new LineBrush(shell, select, flat))
                 .setSize(radius)
                 .setFill(fill);
     }
@@ -236,16 +183,17 @@ public class BrushCommands extends MethodCommands {
             help = "Click to select some objects,click the same block twice to connect the objects.\n" +
                     "Insufficient brush radius, or clicking the the wrong spot will result in undesired shapes. The shapes must be simple lines or loops.\n" +
                     "Pic1: http://i.imgur.com/CeRYAoV.jpg -> http://i.imgur.com/jtM0jA4.png\n" +
-                    "Pic2: http://i.imgur.com/bUeyc72.png -> http://i.imgur.com/tg6MkcF.png",
+                    "Pic2: http://i.imgur.com/bUeyc72.png -> http://i.imgur.com/tg6MkcF.png" +
+                    "Tutorial: https://www.planetminecraft.com/blog/fawe-tutorial/",
             min = 0,
             max = 2
     )
     @CommandPermissions("worldedit.brush.spline")
     public BrushSettings splineBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("25") double radius, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
         player.print(BBC.getPrefix() + BBC.BRUSH_SPLINE.f(radius));
-        return get(context)
-                .setBrush(new SplineBrush(player, session))
+        return set(session, context,
+                new SplineBrush(player, session))
                 .setSize(radius)
                 .setFill(fill);
     }
@@ -263,7 +211,7 @@ public class BrushCommands extends MethodCommands {
     @CommandPermissions("worldedit.brush.sweep")
     public BrushSettings sweepBrush(Player player, LocalSession session, EditSession editSession, @Optional("-1") int copies, CommandContext context) throws WorldEditException {
         player.print(BBC.getPrefix() + BBC.BRUSH_SPLINE.s());
-        return get(context).setBrush(new SweepBrush(copies));
+        return set(session, context, new SweepBrush(copies));
     }
 
     @Command(
@@ -273,15 +221,16 @@ public class BrushCommands extends MethodCommands {
             help = "Create a hanging line between two points.\n" +
                     "The lengthFactor controls how long the line is\n" +
                     "The -h flag creates only a shell\n" +
-                    "The -s flag selects the clicked point after drawing\n",
+                    "The -s flag selects the clicked point after drawing\n" +
+                    "The -d flag sags the catenary toward the facing direction\n",
             min = 1,
             max = 3
     )
     @CommandPermissions("worldedit.brush.spline")
-    public BrushSettings catenaryBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("1.2") @Range(min=1) double lengthFactor, @Optional("0") double radius, @Switch('h') boolean shell, @Switch('s') boolean select, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context)
-                .setBrush(new CatenaryBrush(shell, select, lengthFactor))
+    public BrushSettings catenaryBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("1.2") @Range(min=1) double lengthFactor, @Optional("0") double radius, @Switch('h') boolean shell, @Switch('s') boolean select, @Switch('d') boolean facingDirection, CommandContext context) throws WorldEditException {
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context,
+                new CatenaryBrush(shell, select, facingDirection, lengthFactor))
                 .setSize(radius)
                 .setFill(fill);
     }
@@ -298,9 +247,9 @@ public class BrushCommands extends MethodCommands {
     @CommandPermissions("worldedit.brush.surfacespline") // 0, 0, 0, 10, 0,
     public BrushSettings surfaceSpline(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("0") double radius, @Optional("0") double tension, @Optional("0") double bias, @Optional("0") double continuity, @Optional("10") double quality, CommandContext context) throws WorldEditException {
         player.print(BBC.getPrefix() + BBC.BRUSH_SPLINE.f(radius));
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context)
-                .setBrush(new SurfaceSpline(tension, bias, continuity, quality))
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context,
+                new SurfaceSpline(tension, bias, continuity, quality))
                 .setSize(radius)
                 .setFill(fill);
     }
@@ -316,10 +265,10 @@ public class BrushCommands extends MethodCommands {
     @CommandPermissions("worldedit.brush.rock")
     public BrushSettings blobBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("10") Vector radius, @Optional("100") double sphericity, @Optional("30") double frequency, @Optional("50") double amplitude, CommandContext context) throws WorldEditException {
         double max = MathMan.max(radius.getBlockX(), radius.getBlockY(), radius.getBlockZ());
-        worldEdit.checkMaxBrushRadius(max);
+        getWorldEdit().checkMaxBrushRadius(max);
         Brush brush = new BlobBrush(radius.divide(max), frequency / 100, amplitude / 100, sphericity / 100);
-        return get(context)
-                .setBrush(brush)
+        return set(session, context,
+                brush)
                 .setSize(max)
                 .setFill(fill);
     }
@@ -327,35 +276,42 @@ public class BrushCommands extends MethodCommands {
     @Command(
             aliases = {"sphere", "s"},
             usage = "<pattern> [radius=2]",
-            flags = "h",
+            flags = "hf",
             desc = "Creates a sphere",
             help =
                     "Creates a sphere.\n" +
-                            "The -h flag creates hollow spheres instead.",
+                            "The -h flag creates hollow spheres instead." +
+                            "The -f flag creates falling spheres.",
             min = 1,
             max = 2
     )
     @CommandPermissions("worldedit.brush.sphere")
-    public BrushSettings sphereBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("2") double radius, @Switch('h') boolean hollow, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
+    public BrushSettings sphereBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("2") @Range(min=0) double radius, @Switch('h') boolean hollow, @Switch('f') boolean falling, CommandContext context) throws WorldEditException {
+        getWorldEdit().checkMaxBrushRadius(radius);
 
         Brush brush;
         if (hollow) {
             brush = new HollowSphereBrush();
         } else {
-            brush = new SphereBrush();
-        }
-        if (fill instanceof BaseBlock) {
-            BaseBlock block = (BaseBlock) fill;
-            switch (block.getId()) {
-                case BlockID.SAND:
-                case BlockID.GRAVEL:
-                    BBC.BRUSH_TRY_OTHER.send(player);
-                    break;
+            if (fill instanceof BaseBlock) {
+                BaseBlock block = (BaseBlock) fill;
+                switch (block.getId()) {
+                    case BlockID.SAND:
+                    case BlockID.GRAVEL:
+                        BBC.BRUSH_TRY_OTHER.send(player);
+                        falling = true;
+                        break;
+                }
             }
+            if (falling) {
+                brush = new FallingSphere();
+            } else {
+                brush = new SphereBrush();
+            }
+
         }
-        return get(context)
-                .setBrush(brush)
+        return set(session, context,
+                brush)
                 .setSize(radius)
                 .setFill(fill);
     }
@@ -372,16 +328,16 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.shatter")
     public BrushSettings shatterBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("10") double radius, @Optional("10") int count, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context)
-                .setBrush(new ShatterBrush(count))
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context,
+                new ShatterBrush(count))
                 .setSize(radius)
                 .setFill(fill)
                 .setMask(new ExistingBlockMask(editSession));
     }
 
     @Command(
-            aliases = {"stencil", "color"},
+            aliases = {"stencil"},
             usage = "<pattern> [radius=5] [file|#clipboard|imgur=null] [rotation=360] [yscale=1.0]",
             desc = "Use a height map to paint a surface",
             help =
@@ -392,22 +348,51 @@ public class BrushCommands extends MethodCommands {
             max = -1
     )
     @CommandPermissions("worldedit.brush.stencil")
-    public BrushSettings stencilBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("5") double radius, @Optional("") final String filename, @Optional("0") final int rotation, @Optional("1") final double yscale, @Switch('w') boolean onlyWhite, @Switch('r') boolean randomRotate, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        InputStream stream = getHeightmapStream(filename);
+    public BrushSettings stencilBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("5") double radius, @Optional("") final String image, @Optional("0") @Step(90) @Range(min=0, max=360) final int rotation, @Optional("1") final double yscale, @Switch('w') boolean onlyWhite, @Switch('r') boolean randomRotate, CommandContext context) throws WorldEditException {
+        getWorldEdit().checkMaxBrushRadius(radius);
+        InputStream stream = getHeightmapStream(image);
         HeightBrush brush;
         try {
-            brush = new StencilBrush(stream, rotation, yscale, onlyWhite, filename.equalsIgnoreCase("#clipboard") ? session.getClipboard().getClipboard() : null);
+            brush = new StencilBrush(stream, rotation, yscale, onlyWhite, image.equalsIgnoreCase("#clipboard") ? session.getClipboard().getClipboard() : null);
         } catch (EmptyClipboardException ignore) {
             brush = new StencilBrush(stream, rotation, yscale, onlyWhite, null);
         }
         if (randomRotate) {
             brush.setRandomRotate(true);
         }
-        return get(context)
-                .setBrush(brush)
+        return set(session, context,
+                brush)
                 .setSize(radius)
                 .setFill(fill);
+    }
+
+    @Command(
+            aliases = {"image", "color"},
+            usage = "<radius> <image> [yscale=1]",
+            desc = "Use a height map to paint a surface",
+            flags = "a",
+            help =
+                    "Use a height map to paint any surface.\n" +
+                            "The -a flag will use image alpha\n" +
+                            "The -f blends the image with the existing terrain",
+            min = 1,
+            max = -1
+    )
+    @CommandPermissions("worldedit.brush.stencil")
+    public BrushSettings imageBrush(Player player, EditSession editSession, LocalSession session, @Optional("5") double radius, BufferedImage image, @Optional("1") @Range(min=Double.MIN_NORMAL) final double yscale, @Switch('a') boolean alpha, @Switch('f') boolean fadeOut, CommandContext context) throws WorldEditException, IOException {
+        getWorldEdit().checkMaxBrushRadius(radius);
+        if (yscale != 1) {
+            ImageUtil.scaleAlpha(image, yscale);
+            alpha = true;
+        }
+        if (fadeOut) {
+            ImageUtil.fadeAlpha(image);
+            alpha = true;
+        }
+        ImageBrush brush = new ImageBrush(image, session, alpha);
+        return set(session, context,
+                brush)
+                .setSize(radius);
     }
 
     @Command(
@@ -423,8 +408,8 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.surface")
     public BrushSettings surfaceBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("5") double radius, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context).setBrush(new SurfaceSphereBrush()).setFill(fill).setSize(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context, new SurfaceSphereBrush()).setFill(fill).setSize(radius);
     }
 
     @Command(
@@ -441,15 +426,15 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.scatter")
     public BrushSettings scatterBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("5") double radius, @Optional("5") double points, @Optional("1") double distance, @Switch('o') boolean overlay, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
         Brush brush;
         if (overlay) {
             brush = new ScatterOverlayBrush((int) points, (int) distance);
         } else {
             brush = new ScatterBrush((int) points, (int) distance);
         }
-        return get(context)
-                .setBrush(brush)
+        return set(session, context,
+                brush)
                 .setSize(radius)
                 .setFill(fill);
     }
@@ -467,16 +452,23 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.populateschematic")
     public BrushSettings scatterSchemBrush(Player player, EditSession editSession, LocalSession session, Mask mask, String clipboard, @Optional("30") double radius, @Optional("50") double density, @Switch('r') boolean rotate, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
 
 
         try {
-            ClipboardHolder[] clipboards = ClipboardFormat.SCHEMATIC.loadAllFromInput(player, player.getWorld().getWorldData(), clipboard, true);
+            MultiClipboardHolder clipboards = ClipboardFormat.SCHEMATIC.loadAllFromInput(player, player.getWorld().getWorldData(), clipboard, true);
             if (clipboards == null) {
+                BBC.SCHEMATIC_NOT_FOUND.send(player, clipboard);
                 return null;
             }
-            return get(context)
-                    .setBrush(new PopulateSchem(mask, clipboards, (int) density, rotate))
+            List<ClipboardHolder> holders = clipboards.getHolders();
+            if (holders == null) {
+                BBC.SCHEMATIC_NOT_FOUND.send(player, clipboard);
+                return null;
+            }
+
+            return set(session, context,
+                    new PopulateSchem(mask, holders, (int) density, rotate))
                     .setSize(radius);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -495,7 +487,7 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.layer")
     public BrushSettings surfaceLayer(Player player, EditSession editSession, LocalSession session, double radius, CommandContext args, CommandContext context) throws WorldEditException, InvalidUsageException {
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
         ParserContext parserContext = new ParserContext();
         parserContext.setActor(player);
         parserContext.setWorld(player.getWorld());
@@ -514,11 +506,11 @@ public class BrushCommands extends MethodCommands {
         } catch (IllegalArgumentException ignore) {
             for (int i = 1; i < args.argsLength(); i++) {
                 String arg = args.getString(i);
-                blocks.add(worldEdit.getBlockFactory().parseFromInput(arg, parserContext));
+                blocks.add(getWorldEdit().getBlockFactory().parseFromInput(arg, parserContext));
             }
         }
-        return get(context)
-                .setBrush(new LayerBrush(blocks.toArray(new BaseBlock[blocks.size()])))
+        return set(session, context,
+                new LayerBrush(blocks.toArray(new BaseBlock[blocks.size()])))
                 .setSize(radius);
     }
 
@@ -535,9 +527,9 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.splatter")
     public BrushSettings splatterBrush(Player player, EditSession editSession, LocalSession session, Pattern fill, @Optional("5") double radius, @Optional("1") double points, @Optional("5") double recursion, @Optional("true") boolean solid, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context)
-                .setBrush(new SplatterBrush((int) points, (int) recursion, solid))
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context,
+                new SplatterBrush((int) points, (int) recursion, solid))
                 .setSize(radius)
                 .setFill(fill);
     }
@@ -556,9 +548,9 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.scattercommand")
     public BrushSettings scatterCommandBrush(Player player, EditSession editSession, LocalSession session, double radius, double points, double distance, CommandContext args, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        return get(context)
-                .setBrush(new ScatterCommand((int) points, (int) distance, args.getJoinedStrings(3)))
+        getWorldEdit().checkMaxBrushRadius(radius);
+        return set(session, context,
+                new ScatterCommand((int) points, (int) distance, args.getJoinedStrings(3)))
                 .setSize(radius);
     }
 
@@ -576,14 +568,14 @@ public class BrushCommands extends MethodCommands {
     @CommandPermissions("worldedit.brush.cylinder")
     public BrushSettings cylinderBrush(Player player, EditSession editSession, LocalSession session, Pattern fill,
                                        @Optional("2") double radius, @Optional("1") int height, @Switch('h') boolean hollow, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        worldEdit.checkMaxBrushRadius(height);
-        BrushSettings settings = get(context);
+        getWorldEdit().checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(height);
 
+        BrushSettings settings;
         if (hollow) {
-            settings.setBrush(new HollowCylinderBrush(height));
+            settings = set(session, context, new HollowCylinderBrush(height));
         } else {
-            settings.setBrush(new CylinderBrush(height));
+            settings = set(session, context, new CylinderBrush(height));
         }
         settings.setSize(radius)
                 .setFill(fill);
@@ -608,10 +600,10 @@ public class BrushCommands extends MethodCommands {
 
         Vector size = clipboard.getDimensions();
 
-        worldEdit.checkMaxBrushRadius(size.getBlockX());
-        worldEdit.checkMaxBrushRadius(size.getBlockY());
-        worldEdit.checkMaxBrushRadius(size.getBlockZ());
-        return get(context).setBrush(new ClipboardBrush(holder, ignoreAir, usingOrigin));
+        getWorldEdit().checkMaxBrushRadius(size.getBlockX());
+        getWorldEdit().checkMaxBrushRadius(size.getBlockY());
+        getWorldEdit().checkMaxBrushRadius(size.getBlockZ());
+        return set(session, context, new ClipboardBrush(holder, ignoreAir, usingOrigin));
     }
 
     @Command(
@@ -630,14 +622,14 @@ public class BrushCommands extends MethodCommands {
                                      @Optional("2") double radius, @Optional("4") int iterations, @Switch('n')
                                              boolean naturalBlocksOnly, CommandContext context) throws WorldEditException {
 
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
 
         FawePlayer fp = FawePlayer.wrap(player);
         FaweLimit limit = Settings.IMP.getLimit(fp);
         iterations = Math.min(limit.MAX_ITERATIONS, iterations);
 
-        return get(context)
-                .setBrush(new SmoothBrush(iterations, naturalBlocksOnly))
+        return set(session, context,
+                new SmoothBrush(iterations, naturalBlocksOnly))
                 .setSize(radius);
     }
 
@@ -650,11 +642,11 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.ex")
     public BrushSettings extinguishBrush(Player player, LocalSession session, EditSession editSession, @Optional("5") double radius, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
 
         Pattern fill = (new BaseBlock(0));
-        return get(context)
-                .setBrush(new SphereBrush())
+        return set(session, context,
+                new SphereBrush())
                 .setSize(radius)
                 .setFill(fill)
                 .setMask(new BlockMask(editSession, new BaseBlock(BlockID.FIRE)));
@@ -674,10 +666,10 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.gravity")
     public BrushSettings gravityBrush(Player player, LocalSession session, @Optional("5") double radius, @Switch('h') boolean fromMaxY, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
 
-        return get(context)
-                .setBrush(new GravityBrush(fromMaxY))
+        return set(session, context,
+                new GravityBrush(fromMaxY))
                 .setSize(radius);
     }
 
@@ -697,8 +689,8 @@ public class BrushCommands extends MethodCommands {
             max = 4
     )
     @CommandPermissions("worldedit.brush.height")
-    public BrushSettings heightBrush(Player player, LocalSession session, @Optional("5") double radius, @Optional("") final String filename, @Optional("0") final int rotation, @Optional("1") final double yscale, @Switch('r') boolean randomRotate, @Switch('l') boolean layers, @Switch('s') boolean dontSmooth, CommandContext context) throws WorldEditException {
-        return terrainBrush(player, session, radius, filename, rotation, yscale, false, randomRotate, layers, !dontSmooth, ScalableHeightMap.Shape.CONE, context);
+    public BrushSettings heightBrush(Player player, LocalSession session, @Optional("5") double radius, @Optional("") final String image, @Optional("0") @Step(90) @Range(min=0, max=360) final int rotation, @Optional("1") final double yscale, @Switch('r') boolean randomRotate, @Switch('l') boolean layers, @Switch('s') boolean dontSmooth, CommandContext context) throws WorldEditException {
+        return terrainBrush(player, session, radius, image, rotation, yscale, false, randomRotate, layers, !dontSmooth, ScalableHeightMap.Shape.CONE, context);
     }
 
     @Command(
@@ -715,8 +707,8 @@ public class BrushCommands extends MethodCommands {
             max = 4
     )
     @CommandPermissions("worldedit.brush.height")
-    public BrushSettings cliffBrush(Player player, LocalSession session, @Optional("5") double radius, @Optional("") final String filename, @Optional("0") final int rotation, @Optional("1") final double yscale, @Switch('r') boolean randomRotate, @Switch('l') boolean layers, @Switch('s') boolean dontSmooth, CommandContext context) throws WorldEditException {
-        return terrainBrush(player, session, radius, filename, rotation, yscale, true, randomRotate, layers, !dontSmooth, ScalableHeightMap.Shape.CYLINDER, context);
+    public BrushSettings cliffBrush(Player player, LocalSession session, @Optional("5") double radius, @Optional("") final String image, @Optional("0") @Step(90) @Range(min=0, max=360) final int rotation, @Optional("1") final double yscale, @Switch('r') boolean randomRotate, @Switch('l') boolean layers, @Switch('s') boolean dontSmooth, CommandContext context) throws WorldEditException {
+        return terrainBrush(player, session, radius, image, rotation, yscale, true, randomRotate, layers, !dontSmooth, ScalableHeightMap.Shape.CYLINDER, context);
     }
 
     @Command(
@@ -732,8 +724,33 @@ public class BrushCommands extends MethodCommands {
             max = 4
     )
     @CommandPermissions("worldedit.brush.height")
-    public BrushSettings flattenBrush(Player player, LocalSession session, @Optional("5") double radius, @Optional("") final String filename, @Optional("0") final int rotation, @Optional("1") final double yscale, @Switch('r') boolean randomRotate, @Switch('l') boolean layers, @Switch('s') boolean dontSmooth, CommandContext context) throws WorldEditException {
-        return terrainBrush(player, session, radius, filename, rotation, yscale, true, randomRotate, layers, !dontSmooth, ScalableHeightMap.Shape.CONE, context);
+    public BrushSettings flattenBrush(Player player, LocalSession session, @Optional("5") double radius, @Optional("") final String image, @Optional("0") @Step(90) @Range(min=0, max=360) final int rotation, @Optional("1") final double yscale, @Switch('r') boolean randomRotate, @Switch('l') boolean layers, @Switch('s') boolean dontSmooth, CommandContext context) throws WorldEditException {
+        return terrainBrush(player, session, radius, image, rotation, yscale, true, randomRotate, layers, !dontSmooth, ScalableHeightMap.Shape.CONE, context);
+    }
+
+    private BrushSettings terrainBrush(Player player, LocalSession session, double radius, String image, int rotation, double yscale, boolean flat, boolean randomRotate, boolean layers, boolean smooth, ScalableHeightMap.Shape shape, CommandContext context) throws WorldEditException {
+        getWorldEdit().checkMaxBrushRadius(radius);
+        InputStream stream = getHeightmapStream(image);
+        HeightBrush brush;
+        if (flat) {
+            try {
+                brush = new FlattenBrush(stream, rotation, yscale, layers, smooth, image.equalsIgnoreCase("#clipboard") ? session.getClipboard().getClipboard() : null, shape);
+            } catch (EmptyClipboardException ignore) {
+                brush = new FlattenBrush(stream, rotation, yscale, layers, smooth, null, shape);
+            }
+        } else {
+            try {
+                brush = new HeightBrush(stream, rotation, yscale, layers, smooth, image.equalsIgnoreCase("#clipboard") ? session.getClipboard().getClipboard() : null);
+            } catch (EmptyClipboardException ignore) {
+                brush = new HeightBrush(stream, rotation, yscale, layers, smooth, null);
+            }
+        }
+        if (randomRotate) {
+            brush.setRandomRotate(true);
+        }
+        return set(session, context,
+                brush)
+                .setSize(radius);
     }
 
     private InputStream getHeightmapStream(String filename) {
@@ -767,31 +784,6 @@ public class BrushCommands extends MethodCommands {
         return null;
     }
 
-    private BrushSettings terrainBrush(Player player, LocalSession session, double radius, String filename, int rotation, double yscale, boolean flat, boolean randomRotate, boolean layers, boolean smooth, ScalableHeightMap.Shape shape, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
-        InputStream stream = getHeightmapStream(filename);
-        HeightBrush brush;
-        if (flat) {
-            try {
-                brush = new FlattenBrush(stream, rotation, yscale, layers, smooth, filename.equalsIgnoreCase("#clipboard") ? session.getClipboard().getClipboard() : null, shape);
-            } catch (EmptyClipboardException ignore) {
-                brush = new FlattenBrush(stream, rotation, yscale, layers, smooth, null, shape);
-            }
-        } else {
-            try {
-                brush = new HeightBrush(stream, rotation, yscale, layers, smooth, filename.equalsIgnoreCase("#clipboard") ? session.getClipboard().getClipboard() : null);
-            } catch (EmptyClipboardException ignore) {
-                brush = new HeightBrush(stream, rotation, yscale, layers, smooth, null);
-            }
-        }
-        if (randomRotate) {
-            brush.setRandomRotate(true);
-        }
-        return get(context)
-                .setBrush(brush)
-                .setSize(radius);
-    }
-
 
     @Command(
             aliases = {"copypaste", "copy", "paste", "cp", "copypasta"},
@@ -808,11 +800,11 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.copy")
     public BrushSettings copy(Player player, LocalSession session, @Optional("5") double radius, @Switch('r') boolean randomRotate, @Switch('a') boolean autoRotate, CommandContext context) throws WorldEditException {
-        worldEdit.checkMaxBrushRadius(radius);
+        getWorldEdit().checkMaxBrushRadius(radius);
         player.print(BBC.getPrefix() + BBC.BRUSH_COPY.f(radius));
 
-        return get(context)
-                .setBrush(new CopyPastaBrush(player, session, randomRotate, autoRotate))
+        return set(session, context,
+                new CopyPastaBrush(player, session, randomRotate, autoRotate))
                 .setSize(radius);
     }
 
@@ -831,8 +823,8 @@ public class BrushCommands extends MethodCommands {
     @CommandPermissions("worldedit.brush.command")
     public BrushSettings command(Player player, LocalSession session, double radius, CommandContext args, CommandContext context) throws WorldEditException {
         String cmd = args.getJoinedStrings(1);
-        return get(context)
-                .setBrush(new CommandBrush(cmd, radius))
+        return set(session, context,
+                new CommandBrush(cmd, radius))
                 .setSize(radius);
     }
 
@@ -857,7 +849,7 @@ public class BrushCommands extends MethodCommands {
     )
     @CommandPermissions("worldedit.brush.butcher")
     public BrushSettings butcherBrush(Player player, LocalSession session, CommandContext args, CommandContext context) throws WorldEditException {
-        LocalConfiguration config = worldEdit.getConfiguration();
+        LocalConfiguration config = getWorldEdit().getConfiguration();
 
         double radius = args.argsLength() > 0 ? args.getDouble(0) : 5;
         double maxRadius = config.maxBrushRadius;
@@ -875,8 +867,8 @@ public class BrushCommands extends MethodCommands {
         CreatureButcher flags = new CreatureButcher(player);
         flags.fromCommand(args);
 
-        return get(context)
-                .setBrush(new ButcherBrush(flags))
+        return set(session, context,
+                new ButcherBrush(flags))
                 .setSize(radius);
     }
 

@@ -19,33 +19,33 @@
 
 package com.sk89q.worldedit.command;
 
+import com.boydti.fawe.Fawe;
 import com.boydti.fawe.FaweAPI;
+import com.boydti.fawe.command.FaweParser;
 import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.config.Commands;
+import com.boydti.fawe.config.Settings;
+import com.boydti.fawe.object.DelegateConsumer;
 import com.boydti.fawe.object.FaweLimit;
 import com.boydti.fawe.object.FawePlayer;
+import com.boydti.fawe.object.RunnableVal3;
+import com.boydti.fawe.util.MainUtil;
 import com.boydti.fawe.util.MathMan;
 import com.boydti.fawe.util.StringMan;
 import com.boydti.fawe.util.chat.Message;
 import com.boydti.fawe.util.chat.UsageMessage;
-import com.google.common.base.Joiner;
-import com.sk89q.minecraft.util.commands.Command;
-import com.sk89q.minecraft.util.commands.CommandContext;
-import com.sk89q.minecraft.util.commands.CommandException;
-import com.sk89q.minecraft.util.commands.CommandLocals;
-import com.sk89q.minecraft.util.commands.CommandPermissions;
-import com.sk89q.minecraft.util.commands.Logging;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.LocalConfiguration;
-import com.sk89q.worldedit.LocalSession;
+import com.boydti.fawe.util.gui.FormBuilder;
+import com.sk89q.minecraft.util.commands.*;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.command.util.CreatureButcher;
 import com.sk89q.worldedit.command.util.EntityRemover;
 import com.sk89q.worldedit.entity.Entity;
 import com.sk89q.worldedit.entity.Player;
+import com.sk89q.worldedit.event.platform.CommandEvent;
+import com.sk89q.worldedit.extension.factory.DefaultMaskParser;
+import com.sk89q.worldedit.extension.factory.DefaultTransformParser;
 import com.sk89q.worldedit.extension.factory.HashTagPatternParser;
 import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldedit.extension.platform.Capability;
@@ -64,31 +64,20 @@ import com.sk89q.worldedit.internal.expression.runtime.EvaluationException;
 import com.sk89q.worldedit.regions.CuboidRegion;
 import com.sk89q.worldedit.regions.CylinderRegion;
 import com.sk89q.worldedit.regions.Region;
-import com.sk89q.worldedit.util.command.CommandCallable;
-import com.sk89q.worldedit.util.command.CommandMapping;
-import com.sk89q.worldedit.util.command.DelegateCallable;
-import com.sk89q.worldedit.util.command.Dispatcher;
-import com.sk89q.worldedit.util.command.PrimaryAliasComparator;
+import com.sk89q.worldedit.util.command.*;
 import com.sk89q.worldedit.util.command.binding.Range;
 import com.sk89q.worldedit.util.command.binding.Text;
 import com.sk89q.worldedit.util.command.parametric.Optional;
-import com.sk89q.worldedit.util.command.parametric.ParametricCallable;
+import com.sk89q.worldedit.util.command.parametric.ParameterData;
 import com.sk89q.worldedit.world.World;
 import java.io.File;
+import java.io.FileFilter;
+import java.lang.reflect.Type;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 
 import static com.sk89q.minecraft.util.commands.Logging.LogMode.PLACEMENT;
@@ -113,7 +102,7 @@ public class UtilityCommands extends MethodCommands {
                     "More Info: https://git.io/vSPmA"
     )
     public void patterns(Player player, LocalSession session, CommandContext args) throws WorldEditException {
-        displayModifierHelp(player, args);
+        displayModifierHelp(player, HashTagPatternParser.class, args);
     }
 
     @Command(
@@ -128,7 +117,7 @@ public class UtilityCommands extends MethodCommands {
                     "More Info: https://git.io/v9r4K"
     )
     public void masks(Player player, LocalSession session, CommandContext args) throws WorldEditException {
-        displayModifierHelp(player, args);
+        displayModifierHelp(player, DefaultMaskParser.class, args);
     }
 
     @Command(
@@ -142,17 +131,17 @@ public class UtilityCommands extends MethodCommands {
                     "More Info: https://git.io/v9KHO"
     )
     public void transforms(Player player, LocalSession session, CommandContext args) throws WorldEditException {
-        displayModifierHelp(player, args);
+        displayModifierHelp(player, DefaultTransformParser.class, args);
     }
 
-    private void displayModifierHelp(Player player, CommandContext args) {
+    private void displayModifierHelp(Player player, Class<? extends FaweParser> clazz, CommandContext args) {
+        FaweParser parser = FaweAPI.getParser(clazz);
         if (args.argsLength() == 0) {
             String base = getCommand().aliases()[0];
             UsageMessage msg = new UsageMessage(getCallable(), (WorldEdit.getInstance().getConfiguration().noDoubleSlash ? "" : "/") + base, args.getLocals());
             msg.newline().paginate(base, 0, 1).send(player);
             return;
         }
-        HashTagPatternParser parser = FaweAPI.getParser(HashTagPatternParser.class);
         if (parser != null) {
             CommandMapping mapping = parser.getDispatcher().get(args.getString(0));
             if (mapping != null) {
@@ -170,7 +159,7 @@ public class UtilityCommands extends MethodCommands {
 
     @Command(
             aliases = {"/fill"},
-            usage = "<pattern> <radius> [depth]",
+            usage = "<pattern> <radius> [depth] [direction]",
             desc = "Fill a hole",
             min = 2,
             max = 4
@@ -603,7 +592,7 @@ public class UtilityCommands extends MethodCommands {
         help(args, worldEdit, actor);
     }
 
-    private static CommandMapping detectCommand(Dispatcher dispatcher, String command, boolean isRootLevel) {
+    protected static CommandMapping detectCommand(Dispatcher dispatcher, String command, boolean isRootLevel) {
         CommandMapping mapping;
 
         // First try the command as entered
@@ -632,58 +621,27 @@ public class UtilityCommands extends MethodCommands {
     }
 
     public static void list(File dir, Actor actor, CommandContext args, @Range(min = 0) int page, String formatName, boolean playerFolder, String onClickCmd) {
+        list(dir, actor, args, page, -1, formatName, playerFolder, new RunnableVal3<Message, URI, String>() {
+            @Override
+            public void run(Message m, URI uri, String fileName) {
+                m.text(BBC.SCHEMATIC_LIST_ELEM, fileName, "");
+                if (onClickCmd != null) m.cmdTip(onClickCmd + " " + fileName);
+            }
+        });
+    }
+
+    public static void list(File dir, Actor actor, CommandContext args, @Range(min = 0) int page, int perPage, String formatName, boolean playerFolder, RunnableVal3<Message, URI, String> eachMsg) {
+        AtomicInteger pageInt = new AtomicInteger(page);
         List<File> fileList = new ArrayList<>();
-        int len = args.argsLength();
-        List<String> filters = new ArrayList<>();
-        boolean mine = false;
-        if (len > 0) {
-            int max = len;
-            if (MathMan.isInteger(args.getString(len - 1))) {
-                page = args.getInteger(--len);
-            }
-            for (int i = 0; i < len; i++) {
-                switch (args.getString(i).toLowerCase()) {
-                    case "me":
-                    case "mine":
-                        mine = true;
-                        break;
-                    default:
-                        filters.add(args.getString(i));
-                        break;
-                }
-            }
-        }
-        if (playerFolder) {
-            File playerDir = new File(dir, actor.getUniqueId().toString());
-            if (playerDir.exists()) {
-                fileList.addAll(allFiles(playerDir, true));
-            }
-            if (!mine) {
-                fileList.addAll(allFiles(dir, false));
-            }
-        } else {
-            fileList.addAll(allFiles(dir, true));
-        }
-        if (!filters.isEmpty()) {
-            for (String filter : filters) {
-                fileList.removeIf(file -> !file.getPath().contains(filter));
-            }
-        }
+        if (perPage == -1) perPage = actor instanceof Player ? 12 : 20; // More pages for console
+        page = getFiles(dir, actor, args, page, perPage, formatName, playerFolder, file -> fileList.add(file));
+
         if (fileList.isEmpty()) {
             BBC.SCHEMATIC_NONE.send(actor);
             return;
         }
-        if (formatName != null) {
-            final ClipboardFormat cf = ClipboardFormat.findByAlias(formatName);
-            fileList = fileList.stream()
-                    .filter(file -> cf.isFormat(file))
-                    .collect(Collectors.toList());
 
-        }
-        File[] files = new File[fileList.size()];
-        fileList.toArray(files);
-        final int perPage = actor instanceof Player ? 12 : 20; // More pages for console
-        int pageCount = (files.length + perPage - 1) / perPage;
+        int pageCount = (fileList.size() + perPage - 1) / perPage;
         if (page < 1) {
             BBC.SCHEMATIC_PAGE.send(actor, ">0");
             return;
@@ -695,9 +653,12 @@ public class UtilityCommands extends MethodCommands {
 
         final int sortType = args.hasFlag('d') ? -1 : args.hasFlag('n') ? 1 : 0;
         // cleanup file list
-        Arrays.sort(files, new Comparator<File>() {
+        Collections.sort(fileList, new Comparator<File>() {
             @Override
             public int compare(File f1, File f2) {
+                boolean dir1 = f1.isDirectory();
+                boolean dir2 = f2.isDirectory();
+                if (dir1 != dir2) return dir1 ? -1 : 1;
                 int res;
                 if (sortType == 0) { // use name by default
                     int p = f1.getParent().compareTo(f2.getParent());
@@ -714,10 +675,9 @@ public class UtilityCommands extends MethodCommands {
             }
         });
 
-        List<String[]> schematics = listFiles(dir, files, playerFolder ? actor.getUniqueId() : null);
         int offset = (page - 1) * perPage;
 
-        int limit = Math.min(offset + perPage, schematics.size());
+        int limit = Math.min(offset + perPage, fileList.size());
 
         String fullArgs = (String) args.getLocals().get("arguments");
         String baseCmd = null;
@@ -726,12 +686,11 @@ public class UtilityCommands extends MethodCommands {
         }
         Message m = new Message(BBC.SCHEMATIC_LIST, page, pageCount);
 
+        UUID uuid = playerFolder ? actor.getUniqueId() : null;
         for (int i = offset; i < limit; i++) {
-            String[] fileinfo = schematics.get(i);
-            String fileName = fileinfo[0];
-            String fileFormat = fileinfo[1];
-            m.newline().text(BBC.SCHEMATIC_LIST_ELEM, fileName, fileFormat);
-            if (onClickCmd != null) m.cmdTip(onClickCmd + " " + fileName);
+            m.newline();
+            File file = fileList.get(i);
+            eachMsg.run(m, file.toURI(), getPath(dir, file, uuid));
         }
         if (baseCmd != null) {
             m.newline().paginate(baseCmd, page, pageCount);
@@ -739,292 +698,552 @@ public class UtilityCommands extends MethodCommands {
         m.send(actor);
     }
 
-    private static List<File> allFiles(File root, boolean recursive) {
-        File[] files = root.listFiles();
-        if (files == null) return new ArrayList<>();
-        List<File> fileList = new ArrayList<File>();
-        for (File f : files) {
-            if (f.isDirectory()) {
-                if (recursive) {
-                    List<File> subFiles = allFiles(f, recursive);
-                    if (subFiles == null || subFiles.isEmpty()) continue; // empty subdir
-                    fileList.addAll(subFiles);
-                }
-            } else {
-                fileList.add(f);
+    public static int getFiles(File dir, Actor actor, CommandContext args, @Range(min = 0) int page, int perPage, String formatName, boolean playerFolder, Consumer<File> forEachFile) {
+        Consumer<File> rootFunction = forEachFile;
+
+        int len = args.argsLength();
+        List<String> filters = new ArrayList<>();
+
+        String dirFilter = File.separator;
+
+        boolean listMine = false;
+        boolean listGlobal = !Settings.IMP.PATHS.PER_PLAYER_SCHEMATICS;
+        if (len > 0) {
+            int max = len;
+            if (MathMan.isInteger(args.getString(len - 1))) {
+                page = args.getInteger(--len);
             }
+            for (int i = 0; i < len; i++) {
+                String arg = args.getString(i);
+                switch (arg.toLowerCase()) {
+                    case "me":
+                    case "mine":
+                    case "local":
+                    case "private":
+                        listMine = true;
+                        break;
+                    case "public":
+                    case "global":
+                        listGlobal = true;
+                        break;
+                    case "all":
+                        listMine = true;
+                        listGlobal = true;
+                        break;
+                    default:
+                        if (arg.endsWith("/") || arg.endsWith(File.separator)) {
+                            arg = arg.replace("/", File.separator);
+                            String newDirFilter = dirFilter + arg;
+                            boolean exists = new File(dir, newDirFilter).exists() || playerFolder && MainUtil.resolveRelative(new File(dir, actor.getUniqueId() + newDirFilter)).exists();
+                            if (!exists) {
+                                arg = arg.substring(0, arg.length() - File.separator.length());
+                                if (arg.length() > 3 && arg.length() <= 16) {
+                                    UUID fromName = Fawe.imp().getUUID(arg);
+                                    if (fromName != null) {
+                                        newDirFilter = dirFilter + fromName + File.separator;
+                                        listGlobal = true;
+                                    }
+                                }
+                            }
+                            dirFilter = newDirFilter;
+                        }
+                        else {
+                            filters.add(arg);
+                        }
+                        break;
+                }
+            }
+        }
+        if (!listMine && !listGlobal) {
+            listMine = true;
+        }
+
+        FileFilter ignoreUUIDs = f -> {
+            try {
+                if (f.isDirectory()) {
+                    UUID uuid = UUID.fromString(f.getName());
+                    return false;
+                }
+            } catch (IllegalArgumentException exception) {}
+            return true;
+        };
+
+        List<File> toFilter = new ArrayList<>();
+        if (!filters.isEmpty()) {
+            forEachFile = new DelegateConsumer<File>(forEachFile) {
+                @Override
+                public void accept(File file) {
+                    toFilter.add(file);
+                }
+            };
+        }
+
+        if (formatName != null) {
+            final ClipboardFormat cf = ClipboardFormat.findByAlias(formatName);
+            forEachFile = new DelegateConsumer<File>(forEachFile) {
+                @Override
+                public void accept(File file) {
+                    if (cf.isFormat(file)) super.accept(file);
+                }
+            };
+        } else {
+            forEachFile = new DelegateConsumer<File>(forEachFile) {
+                @Override
+                public void accept(File file) {
+                    if (!file.toString().endsWith(".cached")) super.accept(file);
+                }
+            };
+        }
+        if (playerFolder) {
+            if (listMine) {
+                File playerDir = MainUtil.resolveRelative(new File(dir, actor.getUniqueId() + dirFilter));
+                if (playerDir.exists()) allFiles(playerDir.listFiles(), false, forEachFile);
+            }
+            if (listGlobal) {
+                File rel = MainUtil.resolveRelative(new File(dir, dirFilter));
+                forEachFile = new DelegateConsumer<File>(forEachFile) {
+                    @Override
+                    public void accept(File f) {
+                        try {
+                            if (f.isDirectory()) {
+                                UUID uuid = UUID.fromString(f.getName());
+                                return;
+                            }
+                        } catch (IllegalArgumentException exception) {}
+                        super.accept(f);
+                    }
+                };
+                if (rel.exists()) allFiles(rel.listFiles(), false, forEachFile);
+            }
+        } else {
+            File rel = MainUtil.resolveRelative(new File(dir, dirFilter));
+            if (rel.exists()) allFiles(rel.listFiles(), false, forEachFile);
+        }
+        if (!filters.isEmpty() && !toFilter.isEmpty()) {
+            List<File> result = filter(toFilter, filters);
+            for (File file : result) rootFunction.accept(file);
+        }
+        return page;
+    }
+
+    private static List<File> filter(List<File> fileList, List<String> filters) {
+
+        String[] normalizedNames = new String[fileList.size()];
+        for (int i = 0; i < fileList.size(); i++) {
+            String normalized = fileList.get(i).getName().toLowerCase();
+            if (normalized.startsWith("../")) normalized = normalized.substring(3);
+            normalizedNames[i] = normalized.replace("/", File.separator);
+        }
+
+        for (String filter : filters) {
+            if (fileList.isEmpty()) return fileList;
+            String lowerFilter = filter.toLowerCase().replace("/", File.separator);
+            List<File> newList = new ArrayList<>();
+
+            for (int i = 0; i < normalizedNames.length; i++) {
+                if (normalizedNames[i].startsWith(lowerFilter)) newList.add(fileList.get(i));
+            }
+            if (newList.isEmpty()) {
+                for (int i = 0; i < normalizedNames.length; i++) {
+                    if (normalizedNames[i].contains(lowerFilter)) newList.add(fileList.get(i));
+                }
+
+                if (newList.isEmpty()) {
+                    String checkName = filter.replace("\\", "/").split("/")[0];
+                    if (checkName.length() > 3 && checkName.length() <= 16) {
+                        UUID fromName = Fawe.imp().getUUID(checkName);
+                        if (fromName != null) {
+                            lowerFilter = filter.replaceFirst(checkName, fromName.toString()).toLowerCase();
+                            for (int i = 0; i < normalizedNames.length; i++) {
+                                if (normalizedNames[i].startsWith(lowerFilter)) newList.add(fileList.get(i));
+                            }
+                        }
+                    }
+                }
+            }
+            fileList = newList;
         }
         return fileList;
     }
 
-    private static List<String[]> listFiles(File root, File[] files, UUID uuid) {
-        // List Elem [ File Name, Format Name ]
+    public static void allFiles(File[] files, boolean recursive, Consumer<File> task) {
+        if (files == null || files.length == 0) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                if (recursive) {
+                    allFiles(f.listFiles(), recursive, task);
+                } else {
+                    task.accept(f);
+                }
+            } else {
+                task.accept(f);
+            }
+        }
+    }
+
+    private static String getPath(File root, File file, UUID uuid) {
         File dir;
         if (uuid != null) {
             dir = new File(root, uuid.toString());
         } else {
             dir = root;
         }
-        List<String[]> result = new ArrayList<>();
-        for (File file : files) {
-            ClipboardFormat format = ClipboardFormat.findByFile(file);
-            URI relative = dir.toURI().relativize(file.toURI());
-            String name = "";
-            if (relative.isAbsolute()) {
-                relative = root.toURI().relativize(file.toURI());
-                name += "../";
-            }
-            name += relative.getPath();
-            String formatName;
-            if (format == null) {
-                String[] split = file.getName().split("\\.");
-                formatName = split.length > 1 ? split[split.length - 1].toUpperCase() : "Unknown";
-            } else {
-                formatName = format.toString();
-            }
-            result.add(new String[] {name, formatName} );
+
+        ClipboardFormat format = ClipboardFormat.findByFile(file);
+        URI relative = dir.toURI().relativize(file.toURI());
+        StringBuilder name = new StringBuilder();
+        if (relative.isAbsolute()) {
+            relative = root.toURI().relativize(file.toURI());
+            name.append(".." + File.separator);
         }
-        return result;
+        name.append(relative.getPath());
+        return name.toString();
     }
 
     public static void help(CommandContext args, WorldEdit we, Actor actor) {
         help(args, we, actor, "/", null);
     }
 
-    public static void help(CommandContext args, WorldEdit we, Actor actor, String prefix, CommandCallable callable) {
-        try {
-            if (callable == null) {
-                callable = we.getPlatformManager().getCommandManager().getDispatcher();
-            }
-            CommandLocals locals = args.getLocals();
+    @Command(
+            aliases = {"/gui"},
+            desc = "Open the GUI"
+    )
+    @Logging(PLACEMENT)
+    public void gui(Actor actor, FawePlayer fp, LocalSession session, CommandContext args) throws WorldEditException {
+        FormBuilder gui = Fawe.imp().getFormBuilder();
+        if (gui == null) throw new UnsupportedOperationException("Not implemented");
 
-            int page = -1;
-            String category = null;
-            final int perPage = actor instanceof Player ? 12 : 20; // More pages for console
-            int effectiveLength = args.argsLength();
+        Dispatcher callable = worldEdit.getPlatformManager().getCommandManager().getDispatcher();
+        CommandLocals locals = args.getLocals();
 
-            // Detect page from args
-            try {
-                if (effectiveLength > 0) {
-                    page = args.getInteger(args.argsLength() - 1);
-                    if (page <= 0) {
-                        page = 1;
-                    } else {
-                        page--;
-                    }
-                    effectiveLength--;
-                }
-            } catch (NumberFormatException ignored) {
+        String prefix = Commands.getAlias(UtilityCommands.class, "/gui");
+
+        // TODO sort commands by most used
+
+        new HelpBuilder(callable, args, prefix, Integer.MAX_VALUE) {
+            @Override
+            public void displayFailure(String message) {
+                gui.setTitle("Error");
+                gui.addLabel(message);
             }
 
-            boolean isRootLevel = true;
-            List<String> visited = new ArrayList<String>();
+            @Override
+            public void displayUsage(CommandCallable callable, String commandString) {
+                gui.setTitle(commandString);
 
-            // Create the message
-            if (callable instanceof Dispatcher) {
-                Dispatcher dispatcher = (Dispatcher) callable;
+                if (callable instanceof Dispatcher) {
+                    Dispatcher dispathcer = (Dispatcher) callable;
+                    dispathcer.getCommands();
+                    gui.addLabel("Dispatcher not implemented for " + commandString);
+                } else {
+                    Description cmdDesc = callable.getDescription();
 
-                // Get a list of aliases
-                List<CommandMapping> aliases = new ArrayList<CommandMapping>(dispatcher.getCommands());
-                List<String> prefixes = Collections.nCopies(aliases.size(), "");
-                // Group by callable
 
-                if (page == -1 || effectiveLength > 0) {
-                    Map<String, Map<CommandMapping, String>> grouped = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-                    for (CommandMapping mapping : aliases) {
-                        CommandCallable c = mapping.getCallable();
-                        String group;
-                        if (c instanceof DelegateCallable) {
-                            c = ((DelegateCallable) c).getParent();
+
+                    List<Parameter> params = cmdDesc.getParameters();
+                    String[] suggested = new String[params.size()];
+                    if (cmdDesc.getUsage() != null) {
+                        String[] usageArgs = cmdDesc.getUsage().split(" ", params.size());
+                        for (int i = 0; i < usageArgs.length; i++) {
+                            String arg = usageArgs[i];
+                            String[] splitSug = arg.split("=");
+                            if (splitSug.length == 2) {
+                                suggested[i] = splitSug[1];
+                            }
                         }
-                        if (c instanceof ParametricCallable) {
-                            Object obj = ((ParametricCallable) c).getObject();
-                            Command command = obj.getClass().getAnnotation(Command.class);
-                            if (command != null && command.aliases().length != 0) {
-                                group = command.aliases()[0];
+                    }
+                    for (int i = 0 ; i < params.size(); i++) {
+                        String[] def = params.get(i).getDefaultValue();
+                        if (def != null && def.length != 0) {
+                            suggested[i] = def[0];
+                        }
+                    }
+
+                    String help = cmdDesc.getHelp();
+                    if (help == null || help.isEmpty()) help = cmdDesc.getDescription();
+
+                    gui.addLabel(BBC.color("&2" + help + "\n"));
+
+                    List<String> flags = new ArrayList<>();
+
+                    for (int i = 0; i < params.size(); i++) {
+                        Parameter param = params.get(i);
+                        String name = param.getName();
+                        boolean optional = param.isValueFlag() || param.isOptional();
+                        String[] def = param.getDefaultValue();
+
+                        if (param.getFlag() != null) {
+                            flags.add("-" + param.getFlag() + " ");
+                        } else {
+                            flags.add("");
+                        }
+
+                        if (param instanceof ParameterData) {
+                            ParameterData pd = (ParameterData) param;
+                            Type type = pd.getType();
+                            String suggestion = suggested[i];
+
+                            String color = optional ? "3" : "c";
+                            StringBuilder label = new StringBuilder(BBC.color("&" + color + name + ": "));
+//                            if (suggested[i] != null) label.append(" e.g. " + suggestion);
+                            Range range = MainUtil.getOf(pd.getModifiers(), Range.class);
+                            double min = 0;
+                            double max = 100;
+                            if (range != null) {
+                                min = range.min();
+                                max = range.max();
                             } else {
-                                group = obj.getClass().getSimpleName().replaceAll("Commands", "").replaceAll("Util$", "");
-                            }
-                        } else if (c instanceof Dispatcher) {
-                            group = mapping.getPrimaryAlias();
-                        } else {
-                            group = "Unsorted";
-                        }
-                        group = group.replace("/", "");
-                        group = StringMan.toProperCase(group);
-                        Map<CommandMapping, String> queue = grouped.get(group);
-                        if (queue == null) {
-                            queue = new LinkedHashMap<>();
-                            grouped.put(group, queue);
-                        }
-                        if (c instanceof Dispatcher) {
-                            for (CommandMapping m : ((Dispatcher) c).getCommands()) {
-                                queue.put(m, mapping.getPrimaryAlias() + " ");
-                            }
-                        } else {
-                            // Sub commands get priority
-                            queue.putIfAbsent(mapping, "");
-                        }
-                    }
-                    if (effectiveLength > 0) {
-                        String cat = args.getString(0);
-                        Map<CommandMapping, String> mappings = effectiveLength == 1 ? grouped.get(cat) : null;
-                        if (mappings == null) {
-                            // Drill down to the command
-                            for (int i = 0; i < effectiveLength; i++) {
-                                String command = args.getString(i);
-
-                                if (callable instanceof Dispatcher) {
-                                    // Chop off the beginning / if we're are the root level
-                                    if (isRootLevel && command.length() > 1 && command.charAt(0) == '/') {
-                                        command = command.substring(1);
-                                    }
-
-                                    CommandMapping mapping = detectCommand((Dispatcher) callable, command, isRootLevel);
-                                    if (mapping != null) {
-                                        callable = mapping.getCallable();
-                                    } else {
-                                        if (isRootLevel) {
-                                            Set<String> found = new HashSet<>();
-                                            String arg = args.getString(i).toLowerCase();
-                                            String closest = null;
-                                            int distance = Integer.MAX_VALUE;
-                                            for (CommandMapping map : aliases) {
-                                                String desc = map.getDescription().getDescription();
-                                                if (desc == null) desc = map.getDescription().getHelp();
-                                                if (desc == null) desc = "";
-                                                String[] descSplit = desc.replaceAll("[^A-Za-z0-9]", "").toLowerCase().split(" ");
-                                                for (String alias : map.getAllAliases()) {
-                                                    if (alias.equals(arg)) {
-                                                        closest = map.getPrimaryAlias();
-                                                        distance = 0;
-                                                        found.add(map.getPrimaryAlias());
-                                                    } else if (alias.contains(arg)) {
-                                                        closest = map.getPrimaryAlias();
-                                                        distance = 1;
-                                                        found.add(map.getPrimaryAlias());
-                                                    } else if (StringMan.isEqualIgnoreCaseToAny(arg, descSplit)) {
-                                                        closest = map.getPrimaryAlias();
-                                                        distance = 1;
-                                                        found.add(map.getPrimaryAlias());
-                                                    } else {
-                                                        int currentDist = StringMan.getLevenshteinDistance(alias, arg);
-                                                        if (currentDist < distance) {
-                                                            distance = currentDist;
-                                                            closest = map.getPrimaryAlias();
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            found.add(closest);
-                                            BBC.HELP_SUGGEST.send(actor, arg, StringMan.join(found, ", "));
-                                            return;
-                                        } else {
-                                            actor.printError(String.format("The sub-command '%s' under '%s' could not be found.",
-                                                    command, Joiner.on(" ").join(visited)));
-                                            return;
-                                        }
-                                    }
-                                    visited.add(args.getString(i));
-                                    isRootLevel = false;
-                                } else {
-                                    actor.printError(String.format("'%s' has no sub-commands. (Maybe '%s' is for a parameter?)",
-                                            Joiner.on(" ").join(visited), command));
-                                    return;
+                                SuggestedRange suggestedRange = MainUtil.getOf(pd.getModifiers(), SuggestedRange.class);
+                                if (suggestedRange != null) {
+                                    min = suggestedRange.min();
+                                    max = suggestedRange.max();
+                                } else  if (name.equalsIgnoreCase("radius") || name.equalsIgnoreCase("size")) {
+                                    max = WorldEdit.getInstance().getConfiguration().maxBrushRadius;
                                 }
                             }
-                            if (!(callable instanceof Dispatcher)) {
-                                // TODO interactive box
-                                new UsageMessage(callable, (WorldEdit.getInstance().getConfiguration().noDoubleSlash ? "" : "/") + Joiner.on(" ").join(visited)).send(actor);
-                                return;
+                            int step = 1;
+                            Step stepSizeAnn = MainUtil.getOf(pd.getModifiers(), Step.class);
+                            if (stepSizeAnn != null) {
+                                double stepVal = stepSizeAnn.value();
+                                step = Math.max(1, (int) stepVal);
                             }
-                            dispatcher = (Dispatcher) callable;
-                            aliases = new ArrayList<CommandMapping>(dispatcher.getCommands());
-                            prefixes = Collections.nCopies(aliases.size(), "");
+                            /*
+                            BaseBiome
+                            Vector
+                            Vector2D
+                             */
+
+                            switch (type.getTypeName()) {
+                                case "double":
+                                case "java.lang.Double": {
+                                    double value = suggestion != null ? Double.parseDouble(suggestion) : min;
+                                    gui.addSlider("\n" + label.toString(), min, max, 1, value);
+                                    break;
+                                }
+                                case "int":
+                                case "java.lang.Integer": {
+                                    int value = suggestion != null ? Integer.parseInt(suggestion) : (int) min;
+                                    gui.addSlider("\n" + label.toString(), min, max, 1, value);
+                                    break;
+                                }
+                                case "boolean":
+                                case "java.lang.Boolean": {
+                                    boolean value = suggestion != null ? Boolean.parseBoolean(suggestion) : false;
+                                    gui.addToggle(label.toString(), value);
+                                    break;
+                                }
+                                case "com.sk89q.worldedit.patterns.Pattern": {
+                                    gui.addInput("\n" + label.toString(), "stone", "wood");
+                                    break;
+                                }
+                                case "com.sk89q.worldedit.blocks.BaseBlock": {
+                                    gui.addInput("\n" + label.toString(), "stone", "wood");
+                                    break;
+                                }
+                                case "com.sk89q.worldedit.function.mask.Mask": {
+                                    gui.addInput("\n" + label.toString(), "stone", "wood");
+                                    break;
+                                }
+                                default:
+                                case "java.lang.String": {
+                                    // TODO
+                                    // clipboard
+                                    // schematic
+                                    // image
+                                    if (suggestion == null) suggestion = "";
+                                    gui.addInput("\n" + label.toString(), suggestion, suggestion);
+                                    break;
+                                }
+                            }
                         } else {
-                            aliases = new ArrayList<>();
-                            prefixes = new ArrayList<>();
-                            for (Map.Entry<CommandMapping, String> entry : mappings.entrySet()) {
-                                aliases.add(entry.getKey());
-                                prefixes.add(entry.getValue());
-                            }
+                            throw new UnsupportedOperationException("Unsupported callable: " + callable.getClass() + " | " + param.getClass());
                         }
-                        page = Math.max(0, page);
-                    } else if (grouped.size() > 1) {
-                        Message msg = new Message();
-                        msg.prefix().text(BBC.HELP_HEADER_CATEGORIES).newline();
-                        boolean first = true;
-                        for (Map.Entry<String, Map<CommandMapping, String>> entry : grouped.entrySet()) {
-                            String s1 = Commands.getAlias(UtilityCommands.class, "/help") + " " + entry.getKey();
-                            String s2 = entry.getValue().size() + "";
-                            msg.text(BBC.HELP_ITEM_ALLOWED, "&a" + s1, s2);
-                            msg.tooltip(StringMan.join(entry.getValue().keySet(), ", ", cm -> cm.getPrimaryAlias()));
-                            msg.command(s1);
-                            msg.newline();
-                        }
-                        msg.text(BBC.HELP_FOOTER).link("https://git.io/vSKE5").newline();
-                        msg.paginate((prefix.equals("/") ? Commands.getAlias(UtilityCommands.class, "/help") : prefix), 0, 1);
-                        msg.send(actor);
-                        return;
                     }
-                }
-//            else
-                {
-                    Collections.sort(aliases, new PrimaryAliasComparator(CommandManager.COMMAND_CLEAN_PATTERN));
 
-                    // Calculate pagination
-                    int offset = perPage * Math.max(0, page);
-                    int pageTotal = (int) Math.ceil(aliases.size() / (double) perPage);
-
-                    // Box
-                    Message msg = new Message();
-
-                    if (offset >= aliases.size()) {
-                        msg.text("&c").text(String.format("There is no page %d (total number of pages is %d).", page + 1, pageTotal));
-                    } else {
-                        msg.prefix().text(BBC.HELP_HEADER, page + 1, pageTotal).newline();
-                        int end = Math.min(offset + perPage, aliases.size());
-                        List<CommandMapping> subAliases = aliases.subList(offset, end);
-                        List<String> subPrefixes = prefixes.subList(offset, end);
-                        boolean first = true;
-                        // Add each command
-                        for (int i = 0; i < subAliases.size(); i++) {
-                            StringBuilder s1 = new StringBuilder();
-                            s1.append(prefix);
-                            s1.append(subPrefixes.get(i));
-                            CommandMapping mapping = subAliases.get(i);
-                            CommandCallable c = mapping.getCallable();
-                            if (!visited.isEmpty()) {
-                                s1.append(Joiner.on(" ").join(visited));
-                                s1.append(" ");
+                    gui.setResponder(new Consumer<Map<Integer, Object>>() {
+                        @Override
+                        public void accept(Map<Integer, Object> response) {
+                            int index = 0;
+                            StringBuilder command = new StringBuilder(commandString);
+                            for (Map.Entry<Integer, Object> arg : response.entrySet()) {
+                                String argValue = arg.getValue().toString();
+                                String flag = flags.get(index);
+                                if (!flag.isEmpty()) {
+                                    if (argValue.equalsIgnoreCase("false")) continue;
+                                    if (argValue.equalsIgnoreCase("true")) argValue = "";
+                                }
+                                command.append(" " + flag + argValue);
+                                index++;
                             }
-                            s1.append(mapping.getPrimaryAlias());
-                            String s2 = mapping.getDescription().getDescription();
-                            if (c.testPermission(locals)) {
-                                msg.text(BBC.HELP_ITEM_ALLOWED, s1, s2);
-                                String helpCmd = (prefix.equals("/") ? Commands.getAlias(UtilityCommands.class, "/help") + " " : "") + s1;
-                                msg.cmdTip(helpCmd);
-                                msg.newline();
-                            } else {
-                                msg.text(BBC.HELP_ITEM_DENIED, s1, s2).newline();
-                            }
+                            CommandEvent event = new CommandEvent(actor, command.toString());
+                            CommandManager.getInstance().handleCommand(event);
                         }
-                        if (args.argsLength() == 0) {
-                            msg.text(BBC.HELP_FOOTER).newline();
-                        }
-                        String baseCommand = (prefix.equals("/") ? Commands.getAlias(UtilityCommands.class, "/help") : prefix);
-                        if (effectiveLength > 0) baseCommand += " " + args.getString(0, effectiveLength - 1);
-                        msg.paginate(baseCommand, page + 1, pageTotal);
-                    }
-                    msg.send(actor);
+                    });
                 }
-            } else {
-                new UsageMessage(callable, (WorldEdit.getInstance().getConfiguration().noDoubleSlash ? "" : "/") + Joiner.on(" ").join(visited)).send(actor);
             }
-        } catch (Throwable e) {
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
+
+            @Override
+            public void displayCategories(Map<String, Map<CommandMapping, String>> categories) {
+                gui.setTitle(BBC.HELP_HEADER_CATEGORIES.s());
+                List<String> categoryList = new ArrayList<>();
+                for (Map.Entry<String, Map<CommandMapping, String>> categoryEntry : categories.entrySet()) {
+                    String category = categoryEntry.getKey();
+                    categoryList.add(category);
+                    Map<CommandMapping, String> commandMap = categoryEntry.getValue();
+                    int size = commandMap.size();
+
+                    String plural = size == 1 ? "command" : "commands";
+                    gui.addButton(BBC.HELP_ITEM_ALLOWED.f(category, "(" + size + " " + plural + ")"), null);
+                }
+
+                gui.setResponder(new Consumer<Map<Integer, Object>>() {
+                    @Override
+                    public void accept(Map<Integer, Object> response) {
+                        if (response.isEmpty()) {
+                            // ??
+                            throw new IllegalArgumentException("No response for categories");
+                        } else {
+                            Map.Entry<Integer, Object> clicked = response.entrySet().iterator().next();
+                            String category = categoryList.get(clicked.getKey());
+                            String arguments = prefix + " " + category;
+                            CommandEvent event = new CommandEvent(actor, arguments);
+                            CommandManager.getInstance().handleCommand(event);
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void displayCommands(Map<CommandMapping, String> commandMap, String visited, int page, int pageTotal, int effectiveLength) {
+                gui.setTitle(BBC.HELP_HEADER_SUBCOMMANDS.s());
+
+                String baseCommand = prefix;
+                if (effectiveLength > 0) baseCommand += " " + args.getString(0, effectiveLength - 1);
+
+                CommandLocals locals = args.getLocals();
+                if (!visited.isEmpty()) {
+                    visited = visited + " ";
+                }
+
+                List<String> commands = new ArrayList<>();
+
+                for (Map.Entry<CommandMapping, String> cmdEntry : commandMap.entrySet()) {
+                    CommandMapping mapping = cmdEntry.getKey();
+                    String subPrefix = cmdEntry.getValue();
+
+                    StringBuilder helpCmd = new StringBuilder();
+                    helpCmd.append(prefix);
+                    helpCmd.append(" ");
+                    helpCmd.append(subPrefix);
+                    CommandCallable c = mapping.getCallable();
+                    helpCmd.append(visited);
+                    helpCmd.append(mapping.getPrimaryAlias());
+                    String s2 = mapping.getDescription().getDescription();
+                    if (c.testPermission(locals)) {
+//                        gui.addLabel(s2);
+                        gui.addButton(helpCmd.toString(), null);
+                        commands.add(helpCmd.toString());
+                    }
+                }
+
+                gui.setResponder(new Consumer<Map<Integer, Object>>() {
+                    @Override
+                    public void accept(Map<Integer, Object> response) {
+                        if (response.isEmpty()) {
+                            // ??
+                            throw new IllegalArgumentException("No response for command list: " + prefix);
+                        } else {
+                            Map.Entry<Integer, Object> clicked = response.entrySet().iterator().next();
+                            int index = clicked.getKey();
+                            String cmd = commands.get(index);
+                            CommandEvent event = new CommandEvent(actor, cmd);
+                            CommandManager.getInstance().handleCommand(event);
+                        }
+                    }
+                });
+            }
+        }.run();
+
+        gui.display(fp);
+    }
+
+    public static void help(CommandContext args, WorldEdit we, Actor actor, String prefix, CommandCallable callable) {
+        final int perPage = actor instanceof Player ? 12 : 20; // More pages for console
+
+        HelpBuilder builder = new HelpBuilder(callable, args, prefix, perPage) {
+            @Override
+            public void displayFailure(String message) {
+                actor.printError(message);
+            }
+
+            @Override
+            public void displayUsage(CommandCallable callable, String command) {
+                new UsageMessage(callable, command).send(actor);
+            }
+
+            @Override
+            public void displayCategories(Map<String, Map<CommandMapping, String>> categories) {
+                Message msg = new Message();
+                msg.prefix().text(BBC.HELP_HEADER_CATEGORIES).newline();
+                boolean first = true;
+                for (Map.Entry<String, Map<CommandMapping, String>> entry : categories.entrySet()) {
+                    String s1 = Commands.getAlias(UtilityCommands.class, "/help") + " " + entry.getKey();
+                    String s2 = entry.getValue().size() + "";
+                    msg.text(BBC.HELP_ITEM_ALLOWED, "&a" + s1, s2);
+                    msg.tooltip(StringMan.join(entry.getValue().keySet(), ", ", cm -> cm.getPrimaryAlias()));
+                    msg.command(s1);
+                    msg.newline();
+                }
+                msg.text(BBC.HELP_FOOTER).link("https://git.io/vSKE5").newline();
+                msg.paginate((prefix.equals("/") ? Commands.getAlias(UtilityCommands.class, "/help") : prefix), 0, 1);
+                msg.send(actor);
+            }
+
+            @Override
+            public void displayCommands(Map<CommandMapping, String> commandMap, String visited, int page, int pageTotal, int effectiveLength) {
+                Message msg = new Message();
+                msg.prefix().text(BBC.HELP_HEADER, page + 1, pageTotal).newline();
+
+                CommandLocals locals = args.getLocals();
+
+                if (!visited.isEmpty()) {
+                    visited = visited + " ";
+                }
+
+                // Add each command
+                for (Map.Entry<CommandMapping, String> cmdEntry : commandMap.entrySet()) {
+                    CommandMapping mapping = cmdEntry.getKey();
+                    String subPrefix = cmdEntry.getValue();
+
+                    StringBuilder s1 = new StringBuilder();
+                    s1.append(prefix);
+                    s1.append(subPrefix);
+                    CommandCallable c = mapping.getCallable();
+                    s1.append(visited);
+                    s1.append(mapping.getPrimaryAlias());
+                    String s2 = mapping.getDescription().getDescription();
+                    if (c.testPermission(locals)) {
+                        msg.text(BBC.HELP_ITEM_ALLOWED, s1, s2);
+                        String helpCmd = (prefix.equals("/") ? Commands.getAlias(UtilityCommands.class, "/help") + " " : "") + s1;
+                        msg.cmdTip(helpCmd);
+                        msg.newline();
+                    } else {
+                        msg.text(BBC.HELP_ITEM_DENIED, s1, s2).newline();
+                    }
+                }
+
+                if (args.argsLength() == 0) {
+                    msg.text(BBC.HELP_FOOTER).newline();
+                }
+                String baseCommand = (prefix.equals("/") ? Commands.getAlias(UtilityCommands.class, "/help") : prefix);
+                if (effectiveLength > 0) baseCommand += " " + args.getString(0, effectiveLength - 1);
+                msg.paginate(baseCommand, page + 1, pageTotal);
+
+                msg.send(actor);
+            }
+        };
+
+        builder.run();
     }
 
     public static Class<UtilityCommands> inject() {

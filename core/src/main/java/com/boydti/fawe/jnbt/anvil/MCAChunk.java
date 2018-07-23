@@ -11,24 +11,11 @@ import com.boydti.fawe.util.ArrayUtil;
 import com.boydti.fawe.util.MainUtil;
 import com.boydti.fawe.util.MathMan;
 import com.boydti.fawe.util.ReflectionUtils;
-import com.sk89q.jnbt.CompoundTag;
-import com.sk89q.jnbt.IntTag;
-import com.sk89q.jnbt.ListTag;
-import com.sk89q.jnbt.NBTConstants;
-import com.sk89q.jnbt.NBTInputStream;
-import com.sk89q.jnbt.NBTOutputStream;
-import com.sk89q.jnbt.Tag;
+import com.sk89q.jnbt.*;
 import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public class MCAChunk extends FaweChunk<Void> {
 
@@ -102,13 +89,7 @@ public class MCAChunk extends FaweChunk<Void> {
         }
     }
 
-    public byte[] toBytes(byte[] buffer) throws IOException {
-        if (buffer == null) {
-            buffer = new byte[8192];
-        }
-        FastByteArrayOutputStream buffered = new FastByteArrayOutputStream(buffer);
-        DataOutputStream dataOut = new DataOutputStream(buffered);
-        NBTOutputStream nbtOut = new NBTOutputStream((DataOutput) dataOut);
+    public void write(NBTOutputStream nbtOut) throws IOException {
         nbtOut.writeNamedTagName("", NBTConstants.TYPE_COMPOUND);
         nbtOut.writeLazyCompoundTag("Level", new NBTOutputStream.LazyWrite() {
             @Override
@@ -135,12 +116,12 @@ public class MCAChunk extends FaweChunk<Void> {
                 }
                 out.writeNamedTag("HeightMap", heightMap);
                 out.writeNamedTagName("Sections", NBTConstants.TYPE_LIST);
-                dataOut.writeByte(NBTConstants.TYPE_COMPOUND);
+                nbtOut.getOutputStream().writeByte(NBTConstants.TYPE_COMPOUND);
                 int len = 0;
                 for (int layer = 0; layer < ids.length; layer++) {
                     if (ids[layer] != null) len++;
                 }
-                dataOut.writeInt(len);
+                nbtOut.getOutputStream().writeInt(len);
                 for (int layer = 0; layer < ids.length; layer++) {
                     byte[] idLayer = ids[layer];
                     if (idLayer == null) {
@@ -156,7 +137,17 @@ public class MCAChunk extends FaweChunk<Void> {
             }
         });
         nbtOut.writeEndTag();
-        nbtOut.close();
+    }
+
+    public byte[] toBytes(byte[] buffer) throws IOException {
+        if (buffer == null) {
+            buffer = new byte[8192];
+        }
+        FastByteArrayOutputStream buffered = new FastByteArrayOutputStream(buffer);
+        DataOutputStream dataOut = new DataOutputStream(buffered);
+        try (NBTOutputStream nbtOut = new NBTOutputStream((DataOutput) dataOut)) {
+            write(nbtOut);
+        }
         return buffered.toByteArray();
     }
 
@@ -287,9 +278,9 @@ public class MCAChunk extends FaweChunk<Void> {
                 short pair = MathMan.tripleBlockCoord(x, y, z);
                 CompoundTag tag = entry.getValue();
                 Map<String, Tag> map = ReflectionUtils.getMap(tag.getValue());
-                map.put("x", new IntTag(x + (getX() << 4)));
+                map.put("x", new IntTag((x & 15) + (getX() << 4)));
                 map.put("y", new IntTag(y));
-                map.put("z", new IntTag(z + (getZ() << 4)));
+                map.put("z", new IntTag((z & 15) + (getZ() << 4)));
                 tiles.put(pair, tag);
             }
         }
@@ -465,7 +456,7 @@ public class MCAChunk extends FaweChunk<Void> {
         return FaweCache.asTag(root);
     }
 
-    public MCAChunk(NBTInputStream nis, FaweQueue parent, int x, int z, int compressedSize) throws IOException {
+    public MCAChunk(NBTInputStream nis, FaweQueue parent, int x, int z, boolean readPos) throws IOException {
         super(parent, x, z);
         ids = new byte[16][];
         data = new byte[16][];
@@ -510,7 +501,6 @@ public class MCAChunk extends FaweChunk<Void> {
                 if (entities == null) {
                     entities = new HashMap<UUID, CompoundTag>();
                 }
-
                 long least = entityTag.getLong("UUIDLeast");
                 long most = entityTag.getLong("UUIDMost");
                 entities.put(new UUID(most, least), entityTag);
@@ -528,6 +518,20 @@ public class MCAChunk extends FaweChunk<Void> {
                 heightMap = value;
             }
         });
+        if (readPos) {
+            streamer.addReader(".Level.xPos", new RunnableVal2<Integer, Integer>() {
+                @Override
+                public void run(Integer index, Integer value) {
+                    MCAChunk.this.setLoc(getParent(), value, getZ());
+                }
+            });
+            streamer.addReader(".Level.zPos", new RunnableVal2<Integer, Integer>() {
+                @Override
+                public void run(Integer index, Integer value) {
+                    MCAChunk.this.setLoc(getParent(), getX(), value);
+                }
+            });
+        }
         streamer.readFully();
     }
 
@@ -733,14 +737,18 @@ public class MCAChunk extends FaweChunk<Void> {
 
     public void removeLight() {
         for (int i = 0; i < skyLight.length; i++) {
-            byte[] array1 = skyLight[i];
-            if (array1 == null) {
-                continue;
-            }
-            byte[] array2 = blockLight[i];
-            Arrays.fill(array1, (byte) 0);
-            Arrays.fill(array2, (byte) 0);
+            removeLight(i);
         }
+    }
+
+    public void removeLight(int i) {
+        byte[] array1 = skyLight[i];
+        if (array1 == null) {
+            return;
+        }
+        byte[] array2 = blockLight[i];
+        Arrays.fill(array1, (byte) 0);
+        Arrays.fill(array2, (byte) 0);
     }
 
     public int getNibble(int index, byte[] array) {

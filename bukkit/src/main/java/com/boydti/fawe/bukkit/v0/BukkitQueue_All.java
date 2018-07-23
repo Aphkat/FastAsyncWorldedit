@@ -1,6 +1,7 @@
 package com.boydti.fawe.bukkit.v0;
 
 import com.boydti.fawe.FaweCache;
+import com.boydti.fawe.bukkit.util.BukkitReflectionUtils;
 import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.example.NullRelighter;
 import com.boydti.fawe.example.Relighter;
@@ -30,7 +31,6 @@ import org.bukkit.block.Biome;
 public class BukkitQueue_All extends BukkitQueue_0<ChunkSnapshot, ChunkSnapshot, ChunkSnapshot> {
 
     public static int ALLOCATE;
-    private static int LIGHT_MASK = 0x739C0;
     private ConcurrentMap<Long, ChunkSnapshot> chunkCache = new MapMaker()
             .weakValues()
             .makeMap();
@@ -51,6 +51,29 @@ public class BukkitQueue_All extends BukkitQueue_0<ChunkSnapshot, ChunkSnapshot,
             Settings.IMP.QUEUE.EXTRA_TIME_MS = Integer.MIN_VALUE;
             Settings.IMP.QUEUE.PARALLEL_THREADS = 1;
         }
+    }
+
+    @Override
+    public boolean queueChunkLoad(int cx, int cz, RunnableVal<ChunkSnapshot> operation) {
+        if (PAPER) {
+            try {
+                new PaperChunkCallback(getImpWorld(), cx, cz) {
+                    @Override
+                    public void onLoad(Chunk chunk) {
+                        try {
+                            ChunkSnapshot snapshot = chunk.getChunkSnapshot();
+                            operation.run(snapshot);
+                        } catch (Throwable e) {
+                            PAPER = false;
+                        }
+                    }
+                };
+                return true;
+            } catch (Throwable ignore) {
+                PAPER = false;
+            }
+        }
+        return super.queueChunkLoad(cx, cz);
     }
 
     @Override
@@ -79,17 +102,17 @@ public class BukkitQueue_All extends BukkitQueue_0<ChunkSnapshot, ChunkSnapshot,
 
     static {
         try {
-            ReflectionUtils.init();
-            classRegionFileCache = ReflectionUtils.getNmsClass("RegionFileCache");
-            classRegionFile = ReflectionUtils.getNmsClass("RegionFile");
-            classCraftChunk = ReflectionUtils.getCbClass("CraftChunk");
-            classNMSChunk = ReflectionUtils.getNmsClass("Chunk");
-            classCraftWorld = ReflectionUtils.getCbClass("CraftWorld");
-            classNMSWorld = ReflectionUtils.getNmsClass("World");
-            classChunkProviderServer = ReflectionUtils.getNmsClass("ChunkProviderServer");
-            classIChunkProvider = ReflectionUtils.getNmsClass("IChunkProvider");
-            classIChunkLoader = ReflectionUtils.getNmsClass("IChunkLoader");
-            classChunkRegionLoader = ReflectionUtils.getNmsClass("ChunkRegionLoader");
+            BukkitReflectionUtils.init();
+            classRegionFileCache = BukkitReflectionUtils.getNmsClass("RegionFileCache");
+            classRegionFile = BukkitReflectionUtils.getNmsClass("RegionFile");
+            classCraftChunk = BukkitReflectionUtils.getCbClass("CraftChunk");
+            classNMSChunk = BukkitReflectionUtils.getNmsClass("Chunk");
+            classCraftWorld = BukkitReflectionUtils.getCbClass("CraftWorld");
+            classNMSWorld = BukkitReflectionUtils.getNmsClass("World");
+            classChunkProviderServer = BukkitReflectionUtils.getNmsClass("ChunkProviderServer");
+            classIChunkProvider = BukkitReflectionUtils.getNmsClass("IChunkProvider");
+            classIChunkLoader = BukkitReflectionUtils.getNmsClass("IChunkLoader");
+            classChunkRegionLoader = BukkitReflectionUtils.getNmsClass("ChunkRegionLoader");
 
             methodGetHandleChunk = ReflectionUtils.setAccessible(classCraftChunk.getDeclaredMethod("getHandle"));
             methodGetHandleWorld = ReflectionUtils.setAccessible(classCraftWorld.getDeclaredMethod("getHandle"));
@@ -307,8 +330,11 @@ public class BukkitQueue_All extends BukkitQueue_0<ChunkSnapshot, ChunkSnapshot,
     }
 
     @Override
-    public boolean supportsChangeTask() {
-        return getAdapter() != null;
+    public boolean supports(Capability capability) {
+        switch (capability) {
+            case CHANGE_TASKS: return getAdapter() != null;
+        }
+        return super.supports(capability);
     }
 
     private int skip;

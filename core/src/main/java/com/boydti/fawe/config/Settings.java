@@ -3,9 +3,7 @@ package com.boydti.fawe.config;
 import com.boydti.fawe.object.FaweLimit;
 import com.boydti.fawe.object.FawePlayer;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 public class Settings extends Config {
     @Ignore
@@ -25,21 +23,25 @@ public class Settings extends Config {
     @Final
     public String PLATFORM; // These values are set from FAWE before loading
 
-    @Comment({"Options: de",
+    @Comment({"Options: de, ru, tr",
             "Create a PR to contribute a translation: https://github.com/boy0001/FastAsyncWorldedit/new/master/core/src/main/resources",})
     public String LANGUAGE = "";
-    @Comment("Allow the plugin to update")
-    public boolean UPDATE = true;
+    @Comment({"Enable or disable automatic updates",
+            " - true = update automatically in the background",
+            " - confirm = prompt an admin to confirm each update",
+            " - false = do not update the plugin"
+    })
+    public String UPDATE = "confirm";
     @Comment("Send anonymous usage statistics")
     public boolean METRICS = true;
-    @Comment("FAWE will skip chunks when there's not enough memory available")
-    public boolean PREVENT_CRASHES = false;
     @Comment({
             "Set true to enable WorldEdit restrictions per region (e.g. PlotSquared or WorldGuard).",
             "To be allowed to WorldEdit in a region, users need the appropriate",
             "fawe.<plugin>  permission. See the Permissions page for supported region plugins."
     })
     public boolean REGION_RESTRICTIONS = true;
+    @Comment("FAWE will skip chunks when there's not enough memory available")
+    public boolean PREVENT_CRASHES = false;
     @Comment({
             "FAWE will cancel non admin edits when memory consumption exceeds this %",
             " - Bypass with `/wea` or `//fast` or `fawe.bypass`",
@@ -65,19 +67,37 @@ public class Settings extends Config {
     public HISTORY HISTORY;
     @Create
     public PATHS PATHS;
+    @Create
+    public REGION_RESTRICTIONS_OPTIONS REGION_RESTRICTIONS_OPTIONS;
 
     @Comment("Paths for various directories")
     public static final class PATHS {
+        public String TOKENS = "tokens";
         @Comment({
                 "Put any minecraft or mod jars for FAWE to be aware of block textures",
         })
+        public String PATTERNS = "patterns";
+        public String MASKS = "masks";
         public String TEXTURES = "textures";
         public String HEIGHTMAP = "heightmap";
         public String HISTORY = "history";
-        @Comment("Multiple servers can use the same clipboards")
+        @Comment({
+                "Multiple servers can use the same clipboards",
+                " - Use a shared directory or NFS/Samba"
+        })
         public String CLIPBOARD = "clipboard";
         @Comment("Each player has their own sub directory for schematics")
         public boolean PER_PLAYER_SCHEMATICS = true;
+    }
+
+    @Comment("Region restriction settings")
+    public static final class REGION_RESTRICTIONS_OPTIONS {
+        @Comment({
+                "What type of users are allowed to WorldEdit in a region",
+                " - MEMBER = Players added to a region",
+                " - OWNER = Players who own the region"
+        })
+        public String MODE = "MEMBER";
     }
 
 
@@ -290,7 +310,9 @@ public class Settings extends Config {
     }
 
     @Comment({
-            "Experimental options, use at your own risk"
+            "Experimental options, use at your own risk",
+            " - UNSAFE = Can cause permanent damage to the server",
+            " - SAFE = Can be buggy but unlikely to cause any damage"
     })
     public static class EXPERIMENTAL {
         @Comment({
@@ -305,32 +327,54 @@ public class Settings extends Config {
                 " - Based on tps and player movement",
                 " - Please provide feedback",
         })
-        public boolean DYNAMIC_CHUNK_RENDERING = false;
+        public int DYNAMIC_CHUNK_RENDERING = -1;
         @Comment({
-                "Allows brushes to be persistent",
+                "[SAFE] Allows brushes to be persistent",
         })
         public boolean PERSISTENT_BRUSHES = false;
         @Comment({
-                "Enable CUI without needing the mod installed (Requires ProtocolLib)",
+                "[SAFE] Enable CUI without needing the mod installed (Requires ProtocolLib)",
         })
         public boolean VANILLA_CUI = false;
 
+
+        @Comment({
+                "Disable using native libraries",
+        })
+        public boolean DISABLE_NATIVES = false;
+
+        @Comment({
+                "[SAFE] Keep entities that are positioned in non-air blocks when editing an area",
+                "Might cause client-side FPS lagg in some situations"
+        })
+        public boolean KEEP_ENTITIES_IN_BLOCKS = false;
+
+        @Comment({
+                "[SAFE] Experimental scripting support for Java 9",
+                " - "
+        })
+        public boolean MODERN_CRAFTSCRIPTS = false;
     }
 
     public static class WEB {
+        @Comment({
+            "Should download urls be shortened?",
+             " - Links are less secure as they could be brute forced"
+        })
+        public boolean SHORTEN_URLS = false;
         @Comment({
                 "The web interface for clipboards",
                 " - All schematics are anonymous and private",
                 " - Downloads can be deleted by the user",
                 " - Supports clipboard uploads, downloads and saves",
         })
-        public String URL = "http://empcraft.com/fawe/";
+        public String URL = "https://empcraft.com/fawe/";
         @Comment({
                 "The web interface for assets",
                 " - All schematics are organized and public",
                 " - Assets can be searched, selected and downloaded",
         })
-        public String ASSETS = "http://empcraft.com/assetpack/";
+        public String ASSETS = "https://empcraft.com/assetpack/";
     }
 
     public static class EXTENT {
@@ -351,10 +395,16 @@ public class Settings extends Config {
         public int INTERVAL = 20;
         @Comment("Max falling blocks per interval (per chunk)")
         public int FALLING = 64;
-        @Comment("Max physics per interval (per chunk)")
-        public int PHYSICS = 8192;
+        @Comment("Max physics per interval (excluding redstone)")
+        public int PHYSICS_MS = 10;
         @Comment("Max item spawns per interval (per chunk)")
         public int ITEMS = 256;
+        @Comment({
+                "Whether fireworks can load chunks",
+                " - Fireworks usually travel vertically so do not load any chunks",
+                " - Horizontal fireworks can be hacked in to crash a server"
+        })
+        public boolean FIREWORKS_LOAD_CHUNKS = false;
     }
 
     public static class CLIPBOARD {
@@ -386,9 +436,11 @@ public class Settings extends Config {
                 "The relighting mode to use:",
                 " - 0 = None (Do no relighting)",
                 " - 1 = Optimal (Relight changed light sources and changed blocks)",
-                " - 2 = All (Slowly relight every blocks)"
+                " - 2 = All (Slowly relight every blocks)",
         })
         public int MODE = 1;
+        @Comment({"If existing lighting should be removed before relighting"})
+        public boolean REMOVE_FIRST = false;
     }
 
     public void reload(File file) {
@@ -398,14 +450,18 @@ public class Settings extends Config {
 
     public FaweLimit getLimit(FawePlayer player) {
         FaweLimit limit;
-        if (player.hasWorldEditBypass()) {
+        if (player.hasPermission("fawe.limit.*") || player.hasPermission("fawe.bypass")) {
             limit = FaweLimit.MAX.copy();
         } else {
             limit = new FaweLimit();
         }
-        Collection<String> keys = LIMITS.getSections();
+        ArrayList<String> keys = new ArrayList<>(LIMITS.getSections());
+        if (keys.remove("default")) keys.add("default");
+
+        boolean limitFound = false;
         for (String key : keys) {
-            if (key.equals("default") || (player != null && player.hasPermission("fawe.limit." + key))) {
+            if ((player != null && player.hasPermission("fawe.limit." + key)) || (!limitFound && key.equals("default"))) {
+                limitFound = true;
                 LIMITS newLimit = LIMITS.get(key);
                 limit.MAX_ACTIONS = Math.max(limit.MAX_ACTIONS, newLimit.MAX_ACTIONS != -1 ? newLimit.MAX_ACTIONS : Integer.MAX_VALUE);
                 limit.MAX_CHANGES = Math.max(limit.MAX_CHANGES, newLimit.MAX_CHANGES != -1 ? newLimit.MAX_CHANGES : Integer.MAX_VALUE);

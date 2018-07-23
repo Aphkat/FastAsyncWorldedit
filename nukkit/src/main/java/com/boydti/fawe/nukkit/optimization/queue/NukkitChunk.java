@@ -1,6 +1,7 @@
 package com.boydti.fawe.nukkit.optimization.queue;
 
 import cn.nukkit.blockentity.BlockEntity;
+import cn.nukkit.entity.Entity;
 import cn.nukkit.level.Level;
 import cn.nukkit.level.format.generic.BaseFullChunk;
 import cn.nukkit.nbt.tag.IntTag;
@@ -15,6 +16,7 @@ import com.sk89q.jnbt.CompoundTag;
 import com.sk89q.worldedit.LocalWorld;
 import com.sk89q.worldedit.MutableBlockVector2D;
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.Map;
 
 public class NukkitChunk extends CharFaweChunk<BaseFullChunk, NukkitQueue> {
@@ -44,9 +46,7 @@ public class NukkitChunk extends CharFaweChunk<BaseFullChunk, NukkitQueue> {
             copy.chunk = chunk;
         } else {
             copy = new NukkitChunk(getParent(), getX(), getZ(), (char[][]) MainUtil.copyNd(ids), count.clone(), air.clone(), heightMap.clone());
-            copy.biomes = biomes;
-            copy.chunk = chunk;
-            copy.biomes = biomes.clone();
+            copy.biomes = biomes != null ? biomes.clone() : null;
             copy.chunk = chunk;
         }
         return copy;
@@ -75,7 +75,6 @@ public class NukkitChunk extends CharFaweChunk<BaseFullChunk, NukkitQueue> {
         // Set heightmap
         NukkitQueue parent = (NukkitQueue) getParent();
         Level world = ((NukkitQueue) getParent()).getWorld();
-        world.clearCache(true);
         final BaseFullChunk chunk = getChunk();
         getParent().setHeightMap(this, heightMap);
         char[][] sections = getCombinedIdArrays();
@@ -93,6 +92,30 @@ public class NukkitChunk extends CharFaweChunk<BaseFullChunk, NukkitQueue> {
                 }
             }
         }
+
+        Map<Long, Entity> ents = chunk.getEntities();
+        if (!ents.isEmpty() && !getParent().getSettings().EXPERIMENTAL.KEEP_ENTITIES_IN_BLOCKS) {
+            Iterator<Map.Entry<Long, Entity>> iter = ents.entrySet().iterator();
+            while (iter.hasNext()) {
+                Map.Entry<Long, Entity> entry = iter.next();
+                Entity ent = entry.getValue();
+                if (!(ent instanceof cn.nukkit.Player)) {
+                    int x = ent.getFloorX() & 15;
+                    int y = ent.getFloorY();
+                    int z = ent.getFloorZ() & 15;
+                    char[] idsLayer = this.ids[y >> 4];
+                    if (idsLayer != null) {
+                        if (idsLayer[FaweCache.CACHE_J[y][z][x]] != 0) {
+                            synchronized (world) {
+                                iter.remove();
+                                world.removeEntity(ent);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         for (int layer = 0; layer < sections.length; layer++) {
             char[] ids = sections[layer];
             if (ids == null) {

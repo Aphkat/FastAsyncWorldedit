@@ -8,6 +8,11 @@ buildscript {
         classpath 'com.github.jengelman.gradle.plugins:shadow:1.2.3'
         classpath 'org.ajoberstar:grgit:1.7.0'
     }
+    configurations.all {
+        resolutionStrategy {
+            force 'org.ow2.asm:asm:6.0_BETA'
+        }
+    }
 }
 
 task setupCIWorkspace {
@@ -89,21 +94,20 @@ subprojects {
     }
 
     repositories {
+        maven {url "https://mvnrepository.com/artifact/"}
         mavenCentral()
         maven {url "http://repo.dmulloy2.net/content/groups/public/"}
         maven {url "https://repo.destroystokyo.com/repository/maven-public//"}
-        maven { url = "https://mvnrepository.com/artifact/"}
         maven {url "http://ci.emc.gs/nexus/content/groups/aikar/" }
-        maven {url "http://ci.mengcraft.com:8080/plugin/repository/everything"}
         maven {url "http://ci.athion.net/job/PlotSquared/ws/mvn/"}
         maven {url "http://empcraft.com/maven2"}
         maven {url "https://hub.spigotmc.org/nexus/content/groups/public/"}
         maven {url "http://maven.sk89q.com/repo/"}
-        maven {url "http://nexus.hc.to/content/repositories/pub_releases"}
         maven {url "http://repo.maven.apache.org/maven2"}
         maven {url "http://ci.frostcast.net/plugin/repository/everything"}
         maven {url "http://maven.sk89q.com/artifactory/repo"}
         maven {url "http://repo.spongepowered.org/maven"}
         maven {url "https://repo.inventivetalent.org/content/groups/public/"}
+        maven {url "http://dl.bintray.com/tastybento/maven-repo"}
     }
 }

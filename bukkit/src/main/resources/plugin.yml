@@ -3,7 +3,7 @@ main: com.boydti.fawe.bukkit.BukkitMain
 version: ${version}
 description: Fast Async WorldEdit plugin
 authors: [Empire92]
-loadbefore: [WorldEdit,AsyncWorldEdit,AsyncWorldEditInjector]
+loadbefore: [WorldEdit,AsyncWorldEdit,AsyncWorldEditInjector,WorldGuard]
 load: STARTUP
 database: false
 #softdepend: [WorldGuard, PlotSquared, MCore, Factions, GriefPrevention, Residence, Towny, PlotMe, PreciousStones]
@@ -13,11 +13,18 @@ commands:
     aliases: [fawecancel,/fcancel,/cancel,/fawecancel]
 permissions:
   fawe.plotsquared:
-    default: true
+      default: true
+      children:
+        fawe.plotsquared.trusted: true
   fawe.plotme:
     default: true
+  fawe.bypass.regions:
+    default: false
   fawe.bypass:
     default: false
+    children:
+      fawe.bypass.regions: true
+      fawe.limit.*: true
   fawe.tips:
     default: false
   fawe.admin:
@@ -49,7 +56,7 @@ permissions:
       worldedit.clipboard.rotate: true
       worldedit.help: true
       worldedit.global-mask: true
-      worldedit.global-trasnform: true
+      worldedit.global-transform: true
       worldedit.generation.cylinder: true
       worldedit.generation.sphere: true
       worldedit.generation.forest: true

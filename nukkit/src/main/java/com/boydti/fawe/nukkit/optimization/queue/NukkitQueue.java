@@ -3,6 +3,7 @@ package com.boydti.fawe.nukkit.optimization.queue;
 import cn.nukkit.Player;
 import cn.nukkit.block.Block;
 import cn.nukkit.blockentity.BlockEntity;
+import cn.nukkit.entity.Entity;
 import cn.nukkit.level.Level;
 import cn.nukkit.level.Position;
 import cn.nukkit.level.format.generic.BaseFullChunk;
@@ -26,6 +27,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,12 +63,12 @@ public class NukkitQueue extends NMSMappedFaweQueue<Level, BaseFullChunk, BaseFu
     public void setHeightMap(FaweChunk chunk, byte[] heightMap) {
         BaseFullChunk forgeChunk = (BaseFullChunk) chunk.getChunk();
         if (forgeChunk != null) {
-            int[] otherMap = forgeChunk.getHeightMapArray();
+            byte[] otherMap = forgeChunk.getHeightMapArray();
             for (int i = 0; i < heightMap.length; i++) {
                 int newHeight = heightMap[i] & 0xFF;
-                int currentHeight = otherMap[i];
+                int currentHeight = otherMap[i] & 0xFF;
                 if (newHeight > currentHeight) {
-                    otherMap[i] = newHeight;
+                    otherMap[i] = (byte) newHeight;
                 }
             }
         }
@@ -192,6 +194,21 @@ public class NukkitQueue extends NMSMappedFaweQueue<Level, BaseFullChunk, BaseFu
     }
 
     @Override
+    public boolean removeSectionLighting(BaseFullChunk section, int layer, boolean hasSky) {
+        int minY = layer << 4;
+        int maxY = minY + 15;
+        for (int y = minY; y < maxY; y++) {
+            for (int z = 0; z < 16; z++) {
+                for (int x = 0; x < 16; x++) {
+                    section.setBlockSkyLight(x, y, z, 0);
+                    section.setBlockLight(x, y, z, 0);
+                }
+            }
+        }
+        return true;
+    }
+
+    @Override
     public boolean removeLighting(BaseFullChunk sections, RelightMode mode, boolean hasSky) {
         for (int y = 0; y < 256; y++) {
             for (int z = 0; z < 16; z++) {
@@ -219,7 +236,7 @@ public class NukkitQueue extends NMSMappedFaweQueue<Level, BaseFullChunk, BaseFu
 
     @Override
     public void relightBlock(int x, int y, int z) {
-        world.updateBlockLight(x, y, z);
+        world.addLightUpdate(x, y, z);
     }
 
     @Override
@@ -254,6 +271,16 @@ public class NukkitQueue extends NMSMappedFaweQueue<Level, BaseFullChunk, BaseFu
 
     @Override
     public boolean regenerateChunk(Level level, int x, int z, BaseBiome biome, Long seed) {
+        Map<Long, Entity> ents = level.getChunkEntities(x, z);
+        if (!ents.isEmpty()) {
+            Iterator<Map.Entry<Long, Entity>> iter = ents.entrySet().iterator();
+            while (iter.hasNext()) {
+                Map.Entry<Long, Entity> entry = iter.next();
+                Entity entity = entry.getValue();
+                iter.remove();
+                level.removeEntity(entity);
+            }
+        }
         level.regenerateChunk(x, z);
         return true;
     }

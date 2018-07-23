@@ -530,6 +530,10 @@ public class Vector implements Comparable<Vector>, Serializable {
         return getX() * getX() + getY() * getY() + getZ() * getZ();
     }
 
+    public double volume() {
+        return getX() * getY() * getZ();
+    }
+
     /**
      * Get the distance between this vector and another vector.
      *
@@ -840,7 +844,10 @@ public class Vector implements Comparable<Vector>, Serializable {
 
     @Override
     public String toString() {
-        return "(" + getX() + ", " + getY() + ", " + getZ() + ")";
+        String x = (getX() == getBlockX() ? "" + getBlockX() : "" + getX());
+        String y = (getY() == getBlockY() ? "" + getBlockY() : "" + getY());
+        String z = (getZ() == getBlockZ() ? "" + getBlockZ() : "" + getZ());
+        return "(" + x + ", " + y + ", " + z + ")";
     }
 
     /**
@@ -872,7 +879,7 @@ public class Vector implements Comparable<Vector>, Serializable {
                 Math.max(v1.getZ(), v2.getZ())
         );
     }
-
+    
     /**
      * Gets the midpoint of two vectors.
      *
@@ -889,7 +896,7 @@ public class Vector implements Comparable<Vector>, Serializable {
     }
 
     private void writeObject(java.io.ObjectOutputStream stream) throws IOException {
-        if (!(this instanceof Vector)) {
+        if (!(this instanceof MutableBlockVector)) {
             stream.writeDouble(x);
             stream.writeDouble(y);
             stream.writeDouble(z);

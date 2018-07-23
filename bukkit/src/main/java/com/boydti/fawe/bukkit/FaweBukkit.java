@@ -4,26 +4,21 @@ import com.boydti.fawe.Fawe;
 import com.boydti.fawe.IFawe;
 import com.boydti.fawe.bukkit.chat.BukkitChatManager;
 import com.boydti.fawe.bukkit.listener.BrushListener;
+import com.boydti.fawe.bukkit.listener.BukkitImageListener;
+import com.boydti.fawe.bukkit.listener.CFIPacketListener;
 import com.boydti.fawe.bukkit.listener.RenderListener;
-import com.boydti.fawe.bukkit.regions.FactionsFeature;
-import com.boydti.fawe.bukkit.regions.FactionsOneFeature;
-import com.boydti.fawe.bukkit.regions.FactionsUUIDFeature;
-import com.boydti.fawe.bukkit.regions.GriefPreventionFeature;
-import com.boydti.fawe.bukkit.regions.PlotMeFeature;
-import com.boydti.fawe.bukkit.regions.PreciousStonesFeature;
-import com.boydti.fawe.bukkit.regions.ResidenceFeature;
-import com.boydti.fawe.bukkit.regions.TownyFeature;
-import com.boydti.fawe.bukkit.regions.Worldguard;
+import com.boydti.fawe.bukkit.regions.*;
+import com.boydti.fawe.bukkit.util.BukkitReflectionUtils;
 import com.boydti.fawe.bukkit.util.BukkitTaskMan;
 import com.boydti.fawe.bukkit.util.ItemUtil;
 import com.boydti.fawe.bukkit.util.VaultUtil;
 import com.boydti.fawe.bukkit.util.cui.CUIListener;
 import com.boydti.fawe.bukkit.util.cui.StructureCUI;
-import com.boydti.fawe.bukkit.util.image.BukkitImageListener;
 import com.boydti.fawe.bukkit.util.image.BukkitImageViewer;
 import com.boydti.fawe.bukkit.v0.BukkitQueue_0;
 import com.boydti.fawe.bukkit.v0.BukkitQueue_All;
-import com.boydti.fawe.bukkit.v0.ChunkListener;
+import com.boydti.fawe.bukkit.v0.ChunkListener_8;
+import com.boydti.fawe.bukkit.v0.ChunkListener_9;
 import com.boydti.fawe.bukkit.v1_10.BukkitQueue_1_10;
 import com.boydti.fawe.bukkit.v1_11.BukkitQueue_1_11;
 import com.boydti.fawe.bukkit.v1_12.BukkitQueue_1_12;
@@ -37,10 +32,7 @@ import com.boydti.fawe.object.FaweCommand;
 import com.boydti.fawe.object.FawePlayer;
 import com.boydti.fawe.object.FaweQueue;
 import com.boydti.fawe.regions.FaweMaskManager;
-import com.boydti.fawe.util.Jars;
-import com.boydti.fawe.util.MainUtil;
-import com.boydti.fawe.util.ReflectionUtils;
-import com.boydti.fawe.util.TaskManager;
+import com.boydti.fawe.util.*;
 import com.boydti.fawe.util.cui.CUI;
 import com.boydti.fawe.util.image.ImageViewer;
 import com.boydti.fawe.util.metrics.BStats;
@@ -80,6 +72,7 @@ public class FaweBukkit implements IFawe, Listener {
 
     private boolean listeningImages;
     private BukkitImageListener imageListener;
+    private CFIPacketListener packetListener;
 
     private boolean listeningCui;
     private CUIListener cuiListener;
@@ -98,13 +91,16 @@ public class FaweBukkit implements IFawe, Listener {
     public FaweBukkit(BukkitMain plugin) {
         this.plugin = plugin;
         try {
+            Settings.IMP.TICK_LIMITER.ENABLED = !Bukkit.hasWhitelist();
             Fawe.set(this);
             setupInjector();
             try {
                 com.sk89q.worldedit.bukkit.BukkitPlayer.inject(); // Fixes
                 BukkitWorld.inject(); // Fixes
                 BukkitPlayerBlockBag.inject(); // features
-                FallbackRegistrationListener.inject(); // Fixes
+                try {
+                    FallbackRegistrationListener.inject(); // Fixes
+                } catch (Throwable ignore) {} // Not important at all
             } catch (Throwable e) {
                 debug("========= INJECTOR FAILED =========");
                 e.printStackTrace();
@@ -124,7 +120,7 @@ public class FaweBukkit implements IFawe, Listener {
                 debug(" - This is only a recommendation");
                 debug("==============================");
             }
-            if (Bukkit.getVersion().contains("git-Paper") && Settings.IMP.EXPERIMENTAL.DYNAMIC_CHUNK_RENDERING) {
+            if (Bukkit.getVersion().contains("git-Paper") && Settings.IMP.EXPERIMENTAL.DYNAMIC_CHUNK_RENDERING > 1) {
                 new RenderListener(plugin);
             }
             try {
@@ -136,11 +132,21 @@ public class FaweBukkit implements IFawe, Listener {
             MainUtil.handleError(e);
             Bukkit.getServer().shutdown();
         }
+
+        // Registered delayed Event Listeners
         TaskManager.IMP.task(new Runnable() {
             @Override
             public void run() {
+                // This class
                 Bukkit.getPluginManager().registerEvents(FaweBukkit.this, FaweBukkit.this.plugin);
-                new ChunkListener();
+
+                // The tick limiter
+                try {
+                    Class.forName("sun.misc.SharedSecrets");
+                    new ChunkListener_8();
+                } catch (ClassNotFoundException e) {
+                    new ChunkListener_9();
+                }
             }
         });
     }
@@ -164,11 +170,21 @@ public class FaweBukkit implements IFawe, Listener {
     }
 
     @Override
+    public void registerPacketListener() {
+        PluginManager manager = Bukkit.getPluginManager();
+        if (packetListener == null && manager.getPlugin("ProtocolLib") != null) {
+            packetListener = new CFIPacketListener(plugin);
+        }
+    }
+
+    @Override
     public synchronized ImageViewer getImageViewer(FawePlayer fp) {
         if (listeningImages && imageListener == null) return null;
         try {
             listeningImages = true;
+            registerPacketListener();
             PluginManager manager = Bukkit.getPluginManager();
+
             if (manager.getPlugin("PacketListenerApi") == null) {
                 File output = new File(plugin.getDataFolder().getParentFile(), "PacketListenerAPI_v3.6.0-SNAPSHOT.jar");
                 byte[] jarData = Jars.PL_v3_6_0.download();
@@ -355,7 +371,7 @@ public class FaweBukkit implements IFawe, Listener {
     public FaweQueue getNewQueue(String world, boolean fast) {
         if (playerChunk != (playerChunk = true)) {
             try {
-                Field fieldDirtyCount = ReflectionUtils.getRefClass("{nms}.PlayerChunk").getField("dirtyCount").getRealField();
+                Field fieldDirtyCount = BukkitReflectionUtils.getRefClass("{nms}.PlayerChunk").getField("dirtyCount").getRealField();
                 fieldDirtyCount.setAccessible(true);
                 int mod = fieldDirtyCount.getModifiers();
                 if ((mod & Modifier.VOLATILE) == 0) {
@@ -408,7 +424,7 @@ public class FaweBukkit implements IFawe, Listener {
         if (fast) {
             if (playerChunk != (playerChunk = true)) {
                 try {
-                    Field fieldDirtyCount = ReflectionUtils.getRefClass("{nms}.PlayerChunk").getField("dirtyCount").getRealField();
+                    Field fieldDirtyCount = BukkitReflectionUtils.getRefClass("{nms}.PlayerChunk").getField("dirtyCount").getRealField();
                     fieldDirtyCount.setAccessible(true);
                     int mod = fieldDirtyCount.getModifiers();
                     if ((mod & Modifier.VOLATILE) == 0) {
@@ -541,6 +557,18 @@ public class FaweBukkit implements IFawe, Listener {
                 MainUtil.handleError(e);
             }
         }
+
+
+        final Plugin aSkyBlock = Bukkit.getServer().getPluginManager().getPlugin("ASkyBlock");
+        if ((aSkyBlock != null) && aSkyBlock.isEnabled()) {
+            try {
+                managers.add(new ASkyBlockHook(aSkyBlock, this));
+                Fawe.debug("Plugin 'ASkyBlock' found. Using it now.");
+            } catch (final Throwable e) {
+                MainUtil.handleError(e);
+            }
+        }
+
         return managers;
     }
 //
@@ -561,11 +589,12 @@ public class FaweBukkit implements IFawe, Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
-        FawePlayer fp = FawePlayer.wrap(player);
+        String name = player.getName();
+        FawePlayer fp = Fawe.get().getCachedPlayer(name);
         if (fp != null) {
             fp.unregister();
+            Fawe.get().unregister(name);
         }
-        Fawe.get().unregister(event.getPlayer().getName());
     }
 
     @Override

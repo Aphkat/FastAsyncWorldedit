@@ -1,17 +1,36 @@
+/**
+ This file is part of VoxelSniper, licensed under the MIT License (MIT).
+
+ Copyright (c) The VoxelBox <http://thevoxelbox.com>
+ Copyright (c) contributors
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ */
+
 package com.thevoxelbox.voxelsniper;
 
 import com.boydti.fawe.Fawe;
-import com.boydti.fawe.FaweAPI;
 import com.boydti.fawe.bukkit.wrapper.AsyncWorld;
 import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.logging.LoggingChangeSet;
-import com.boydti.fawe.object.ChangeSetFaweQueue;
-import com.boydti.fawe.object.FawePlayer;
-import com.boydti.fawe.object.FaweQueue;
-import com.boydti.fawe.object.MaskedFaweQueue;
-import com.boydti.fawe.object.RegionWrapper;
-import com.boydti.fawe.object.RunnableVal;
+import com.boydti.fawe.object.*;
 import com.boydti.fawe.object.changeset.FaweChangeSet;
 import com.boydti.fawe.object.extent.ResettableExtent;
 import com.boydti.fawe.object.extent.SourceMaskExtent;
@@ -21,15 +40,13 @@ import com.boydti.fawe.util.SetQueue;
 import com.boydti.fawe.util.TaskManager;
 import com.boydti.fawe.util.WEManager;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.BiMap;
-import com.google.common.collect.ClassToInstanceMap;
-import com.google.common.collect.HashBiMap;
-import com.google.common.collect.ImmutableBiMap;
-import com.google.common.collect.MutableClassToInstanceMap;
+import com.google.common.collect.*;
+import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.LocalSession;
 import com.sk89q.worldedit.extent.MaskingExtent;
 import com.sk89q.worldedit.function.mask.Mask;
 import com.sk89q.worldedit.function.mask.Masks;
+import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.session.request.Request;
 import com.thevoxelbox.voxelsniper.brush.IBrush;
 import com.thevoxelbox.voxelsniper.brush.SnipeBrush;
@@ -37,6 +54,8 @@ import com.thevoxelbox.voxelsniper.brush.perform.PerformBrush;
 import com.thevoxelbox.voxelsniper.brush.perform.Performer;
 import com.thevoxelbox.voxelsniper.event.SniperMaterialChangedEvent;
 import com.thevoxelbox.voxelsniper.event.SniperReplaceMaterialChangedEvent;
+
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -47,8 +66,10 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
 import org.bukkit.material.MaterialData;
+import org.bukkit.plugin.PluginManager;
 
 public class Sniper {
     private VoxelSniper plugin;
@@ -58,6 +79,8 @@ public class Sniper {
     private Map<String, SniperTool> tools = new HashMap<>();
 
     public Sniper(VoxelSniper plugin, Player player) {
+        Preconditions.checkNotNull(plugin);
+        Preconditions.checkNotNull(player);
         this.plugin = plugin;
         this.player = player.getUniqueId();
         SniperTool sniperTool = new SniperTool(this);
@@ -150,7 +173,7 @@ public class Sniper {
                         public void run() {
                             snipeOnCurrentThread(fp, action, itemInHand, clickedBlock, clickedFace, sniperTool, toolId);
                         }
-                    }, true, false)) {
+                    }, false, true)) {
                         BBC.WORLDEDIT_COMMAND_LIMIT.send(fp);
                     }
                 }
@@ -167,8 +190,8 @@ public class Sniper {
         Player bukkitPlayer = getPlayer();
         World bukkitWorld = bukkitPlayer.getWorld();
 
-        FaweQueue baseQueue = FaweAPI.createQueue(fp.getLocation().world, false);
-        RegionWrapper[] mask = WEManager.IMP.getMask(fp);
+        FaweQueue baseQueue = fp.getFaweQueue(false);
+        Region[] mask = WEManager.IMP.getMask(fp);
         if (mask.length == 0) {
             BBC.NO_REGION.send(fp);
             return false;
@@ -237,14 +260,14 @@ public class Sniper {
                                 int originalVoxel = snipeData.getVoxelId();
                                 snipeData.setVoxelId(targetBlock.getTypeId());
                                 SniperMaterialChangedEvent event = new SniperMaterialChangedEvent(this, toolId, new MaterialData(originalVoxel, snipeData.getData()), new MaterialData(snipeData.getVoxelId(), snipeData.getData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().voxel();
                                 return true;
                             } else {
                                 int originalVoxel = snipeData.getVoxelId();
                                 snipeData.setVoxelId(0);
                                 SniperMaterialChangedEvent event = new SniperMaterialChangedEvent(this, toolId, new MaterialData(originalVoxel, snipeData.getData()), new MaterialData(snipeData.getVoxelId(), snipeData.getData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().voxel();
                                 return true;
                             }
@@ -253,14 +276,14 @@ public class Sniper {
                                 byte originalData = snipeData.getData();
                                 snipeData.setData(targetBlock.getData());
                                 SniperMaterialChangedEvent event = new SniperMaterialChangedEvent(this, toolId, new MaterialData(snipeData.getVoxelId(), originalData), new MaterialData(snipeData.getVoxelId(), snipeData.getData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().data();
                                 return true;
                             } else {
                                 byte originalData = snipeData.getData();
                                 snipeData.setData((byte) 0);
                                 SniperMaterialChangedEvent event = new SniperMaterialChangedEvent(this, toolId, new MaterialData(snipeData.getVoxelId(), originalData), new MaterialData(snipeData.getVoxelId(), snipeData.getData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().data();
                                 return true;
                             }
@@ -283,14 +306,14 @@ public class Sniper {
                                 int originalId = snipeData.getReplaceId();
                                 snipeData.setReplaceId(targetBlock.getTypeId());
                                 SniperReplaceMaterialChangedEvent event = new SniperReplaceMaterialChangedEvent(this, toolId, new MaterialData(originalId, snipeData.getReplaceData()), new MaterialData(snipeData.getReplaceId(), snipeData.getReplaceData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().replace();
                                 return true;
                             } else {
                                 int originalId = snipeData.getReplaceId();
                                 snipeData.setReplaceId(0);
                                 SniperReplaceMaterialChangedEvent event = new SniperReplaceMaterialChangedEvent(this, toolId, new MaterialData(originalId, snipeData.getReplaceData()), new MaterialData(snipeData.getReplaceId(), snipeData.getReplaceData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().replace();
                                 return true;
                             }
@@ -299,14 +322,14 @@ public class Sniper {
                                 byte originalData = snipeData.getReplaceData();
                                 snipeData.setReplaceData(targetBlock.getData());
                                 SniperReplaceMaterialChangedEvent event = new SniperReplaceMaterialChangedEvent(this, toolId, new MaterialData(snipeData.getReplaceId(), originalData), new MaterialData(snipeData.getReplaceId(), snipeData.getReplaceData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().replaceData();
                                 return true;
                             } else {
                                 byte originalData = snipeData.getReplaceData();
                                 snipeData.setReplaceData((byte) 0);
                                 SniperReplaceMaterialChangedEvent event = new SniperReplaceMaterialChangedEvent(this, toolId, new MaterialData(snipeData.getReplaceId(), originalData), new MaterialData(snipeData.getReplaceId(), snipeData.getReplaceData()));
-                                Bukkit.getPluginManager().callEvent(event);
+                                callEvent(event);
                                 snipeData.getVoxelMessage().replaceData();
                                 return true;
                             }
@@ -393,6 +416,24 @@ public class Sniper {
         return false;
     }
 
+    private void callEvent(Event event) {
+        if (Fawe.isMainThread()) {
+            Bukkit.getPluginManager().callEvent(event);
+        } else {
+            if (event.isAsynchronous()) {
+                Bukkit.getPluginManager().callEvent(event);
+            } else {
+                try {
+                    PluginManager plm = Bukkit.getPluginManager();
+                    Class<? extends PluginManager> clazz = plm.getClass();
+                    Method methodFireEvent = clazz.getDeclaredMethod("fireEvent", Event.class);
+                    methodFireEvent.setAccessible(true);
+                    methodFireEvent.invoke(plm, event);
+                } catch (Throwable ignore) {}
+            }
+        }
+    }
+
     public IBrush setBrush(String toolId, Class<? extends IBrush> brush) {
         if (!tools.containsKey(toolId)) {
             return null;
@@ -466,8 +507,11 @@ public class Sniper {
             public void run() {
                 int count = 0;
                 for (int i = 0; i < amount; i++) {
-                    if (fp.getSession().undo(null, fp.getPlayer()) == null) {
+                    EditSession es = fp.getSession().undo(null, fp.getPlayer());
+                    if (es == null) {
                         break;
+                    } else {
+                        es.flushQueue();
                     }
                     count++;
                 }
@@ -526,6 +570,8 @@ public class Sniper {
         }
 
         private SniperTool(Class<? extends IBrush> currentBrush, SnipeData snipeData) {
+            Preconditions.checkNotNull(currentBrush);
+            Preconditions.checkNotNull(snipeData);
             this.snipeData = snipeData;
             messageHelper = new Message(snipeData);
             snipeData.setVoxelMessage(messageHelper);

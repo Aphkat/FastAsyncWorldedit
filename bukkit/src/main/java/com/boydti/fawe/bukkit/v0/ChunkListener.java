@@ -3,28 +3,50 @@ package com.boydti.fawe.bukkit.v0;
 import com.boydti.fawe.Fawe;
 import com.boydti.fawe.bukkit.FaweBukkit;
 import com.boydti.fawe.config.Settings;
+import com.boydti.fawe.util.FaweTimer;
 import com.boydti.fawe.util.MathMan;
 import com.boydti.fawe.util.TaskManager;
-import com.sk89q.worldedit.blocks.BlockID;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBurnEvent;
+import org.bukkit.event.block.BlockCanBuildEvent;
+import org.bukkit.event.block.BlockDamageEvent;
+import org.bukkit.event.block.BlockDispenseEvent;
+import org.bukkit.event.block.BlockExpEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
+import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockGrowEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockPhysicsEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.BlockRedstoneEvent;
+import org.bukkit.event.block.LeavesDecayEvent;
+import org.bukkit.event.block.NotePlayEvent;
+import org.bukkit.event.block.SignChangeEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
+import org.bukkit.event.inventory.FurnaceBurnEvent;
+import org.bukkit.event.inventory.FurnaceSmeltEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.util.Vector;
 
-public class ChunkListener implements Listener {
+import java.util.List;
 
-    private int rateLimit = 0;
-    private int[] badLimit = new int[]{Settings.IMP.TICK_LIMITER.PHYSICS, Settings.IMP.TICK_LIMITER.FALLING, Settings.IMP.TICK_LIMITER.ITEMS};
+public abstract class ChunkListener implements Listener {
+
+    protected int rateLimit = 0;
+    private int[] badLimit = new int[]{Settings.IMP.TICK_LIMITER.PHYSICS_MS, Settings.IMP.TICK_LIMITER.FALLING, Settings.IMP.TICK_LIMITER.ITEMS};
 
     public ChunkListener() {
         if (Settings.IMP.TICK_LIMITER.ENABLED) {
@@ -36,6 +58,9 @@ public class ChunkListener implements Listener {
                     physicsFreeze = false;
                     itemFreeze = false;
                     lastZ = Integer.MIN_VALUE;
+                    physSkip = 0;
+                    physCancelPair = Long.MIN_VALUE;
+                    physCancel = false;
 
                     counter.clear();
                     for (Long2ObjectMap.Entry<Boolean> entry : badChunks.long2ObjectEntrySet()) {
@@ -50,10 +75,13 @@ public class ChunkListener implements Listener {
         }
     }
 
+    protected abstract int getDepth(Exception ex);
+    protected abstract StackTraceElement getElement(Exception ex, int index);
+
     public static boolean physicsFreeze = false;
     public static boolean itemFreeze = false;
 
-    private Long2ObjectOpenHashMap<Boolean> badChunks = new Long2ObjectOpenHashMap<>();
+    protected Long2ObjectOpenHashMap<Boolean> badChunks = new Long2ObjectOpenHashMap<>();
     private Long2ObjectOpenHashMap<int[]> counter = new Long2ObjectOpenHashMap<>();
     private int lastX = Integer.MIN_VALUE, lastZ = Integer.MIN_VALUE;
     private int[] lastCount;
@@ -82,120 +110,169 @@ public class ChunkListener implements Listener {
 
     }
 
-    private int lastPhysY = 0;
+    protected int physSkip;
+    protected boolean physCancel;
+    protected long physCancelPair;
+
+    protected long physStart;
+    protected long physTick;
+
+    private void reset() {
+        physSkip = 0;
+        physStart = System.currentTimeMillis();
+        physCancel = false;
+    }
 
     @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockBurnEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockCanBuildEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockDamageEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockDispenseEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockExpEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockExplodeEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockFadeEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockFromToEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockGrowEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockIgniteEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockPlaceEvent event) { reset(); }
+
+//    @EventHandler(priority = EventPriority.LOWEST)
+//    public void event(BrewEvent event) { reset(); }
+//
+//    @EventHandler(priority = EventPriority.LOWEST)
+//    public void event(BrewingStandFuelEvent event) { reset(); }
+//
+//    @EventHandler(priority = EventPriority.LOWEST)
+//    public void event(CauldronLevelChangeEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(FurnaceBurnEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(FurnaceSmeltEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(LeavesDecayEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(NotePlayEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(SignChangeEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void event(BlockRedstoneEvent event) { reset(); }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPhysics(BlockPhysicsEvent event) {
+        if (physCancel) {
+            Block block = event.getBlock();
+            long pair = MathMan.pairInt(block.getX() >> 4, block.getZ() >> 4);
+            if (physCancelPair == pair) {
+                event.setCancelled(true);
+                return;
+            }
+            if (badChunks.containsKey(pair)) {
+                physCancelPair = pair;
+                event.setCancelled(true);
+                return;
+            }
+        } else {
+            if ((++physSkip & 1023) != 0) return;
+            FaweTimer timer = Fawe.get().getTimer();
+            if (timer.getTick() != physTick) {
+                physTick = timer.getTick();
+                physStart = System.currentTimeMillis();
+                return;
+            } else if (System.currentTimeMillis() - physStart < Settings.IMP.TICK_LIMITER.PHYSICS_MS) {
+                return;
+            }
+        }
         if (physicsFreeze) {
             event.setCancelled(true);
             return;
         }
-        Block block = event.getBlock();
-        int x = block.getX();
-        int z = block.getZ();
-        int cx = x >> 4;
-        int cz = z >> 4;
-        int[] count = getCount(cx, cz);
-        if (count[0] >= Settings.IMP.TICK_LIMITER.PHYSICS) {
-            event.setCancelled(true);
-            return;
-        }
-        int blockId = block.getTypeId();
-        if (event.getChangedTypeId() == blockId) {
-            int y = block.getY();
-            int tmpLastY = lastPhysY;
-            lastPhysY = y;
-            int amount;
-            switch (blockId) {
-                case BlockID.REDSTONE_BLOCK:
-                case BlockID.REDSTONE_LAMP_OFF:
-                case BlockID.REDSTONE_LAMP_ON:
-                case BlockID.REDSTONE_ORE:
-                case BlockID.REDSTONE_REPEATER_OFF:
-                case BlockID.REDSTONE_REPEATER_ON:
-                case BlockID.REDSTONE_TORCH_OFF:
-                case BlockID.REDSTONE_TORCH_ON:
-                case BlockID.REDSTONE_WIRE:
-                case BlockID.GLOWING_REDSTONE_ORE:
-                case BlockID.TRIPWIRE:
-                case BlockID.TRIPWIRE_HOOK:
-                case 218: // Observer
-                case BlockID.PISTON_BASE:
-                case BlockID.PISTON_STICKY_BASE:
-                case BlockID.IRON_DOOR:
-                case BlockID.ACACIA_DOOR:
-                case BlockID.BIRCH_DOOR:
-                case BlockID.DARK_OAK_DOOR:
-                case BlockID.IRON_TRAP_DOOR:
-                case BlockID.JUNGLE_DOOR:
-                case BlockID.SPRUCE_DOOR:
-                case BlockID.TRAP_DOOR:
-                case BlockID.WOODEN_DOOR:
-                case BlockID.FENCE_GATE:
-                case BlockID.ACACIA_FENCE_GATE:
-                case BlockID.BIRCH_FENCE_GATE:
-                case BlockID.DARK_OAK_FENCE_GATE:
-                case BlockID.JUNGLE_FENCE_GATE:
-                case BlockID.SPRUCE_FENCE_GATE:
-                case BlockID.LEVER:
-                case BlockID.WOODEN_BUTTON:
-                case BlockID.STONE_BUTTON:
-                case BlockID.STONE_PRESSURE_PLATE:
-                case BlockID.WOODEN_PRESSURE_PLATE:
-                case BlockID.PRESSURE_PLATE_HEAVY:
-                case BlockID.PRESSURE_PLATE_LIGHT:
-                case BlockID.POWERED_RAIL:
-                case BlockID.ACTIVATOR_RAIL:
-                case BlockID.DETECTOR_RAIL:
-                case BlockID.WATER:
-                case BlockID.STATIONARY_WATER:
-                case BlockID.LAVA:
-                case BlockID.STATIONARY_LAVA:
-                    if (y == tmpLastY) {
-                        return;
+        if (event.getChangedTypeId() == 0) return;
+        Exception e = new Exception();
+        int depth = getDepth(e);
+        if (depth >= 256) {
+            if (containsSetAir(e, event)) {
+                Block block = event.getBlock();
+                int cx = block.getX() >> 4;
+                int cz = block.getZ() >> 4;
+                physCancelPair = MathMan.pairInt(cx, cz);
+                    if (rateLimit <= 0) {
+                        rateLimit = 20;
+                        Fawe.debug("[FAWE `tick-limiter`] Detected and cancelled physics  lag source at " + block.getLocation());
                     }
-                    // Should cancel if excess, but need to be careful
-                    amount = 1;
-                    break;
-                case BlockID.SAND:
-                case BlockID.GRAVEL:
-                case BlockID.DRAGON_EGG:
-                case BlockID.ANVIL:
-                case BlockID.FIRE:
-                case BlockID.TORCH:
-                    // If there's lots of this, it's usually from abuse
-                    amount = 16;
-                    break;
-                default:
-                    // Uncategorized, but not redstone
-                    amount = 4;
-                    break;
-            }
-            if ((count[0] += amount) >= Settings.IMP.TICK_LIMITER.PHYSICS) {
                 cancelNearby(cx, cz);
-                if (rateLimit <= 0) {
-                    rateLimit = 20;
-                    Fawe.debug("[FAWE `tick-limiter`] Detected and cancelled physics  lag source at " + block.getLocation());
-                }
                 event.setCancelled(true);
+                physCancel = true;
+                return;
             }
         }
+        physSkip = 1;
+        physCancel = false;
     }
 
-    private void cancelNearby(int cx, int cz) {
+    protected boolean containsSetAir(Exception e, BlockPhysicsEvent event) {
+        for (int frame = 25; frame < 35; frame++) {
+            StackTraceElement elem = getElement(e, frame);
+            if (elem != null) {
+                String methodName = elem.getMethodName();
+                // setAir | setTypeAndData (hacky, but this needs to be efficient)
+                if (methodName.charAt(0) == 's' && methodName.length() == 6 || methodName.length() == 14) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    protected void cancelNearby(int cx, int cz) {
         cancel(cx, cz);
         cancel(cx + 1, cz);
         cancel(cx - 1, cz);
         cancel(cx, cz + 1);
         cancel(cx, cz - 1);
+        cancel(cx - 1, cz - 1);
+        cancel(cx - 1, cz + 1);
+        cancel(cx + 1, cz - 1);
+        cancel(cx + 1, cz + 1);
     }
 
     private void cancel(int cx, int cz) {
         long key = MathMan.pairInt(cx, cz);
         badChunks.put(key, (Boolean) true);
         counter.put(key, badLimit);
+        int[] count = getCount(cx, cz);
+        count[0] = Integer.MAX_VALUE;
+        count[1] = Integer.MAX_VALUE;
+        count[2] = Integer.MAX_VALUE;
+
     }
 
+    // Falling
     @EventHandler(priority = EventPriority.LOWEST)
     public void onBlockChange(EntityChangeBlockEvent event) {
         if (physicsFreeze) {
@@ -214,13 +291,58 @@ public class ChunkListener implements Listener {
         }
         if (event.getEntityType() == EntityType.FALLING_BLOCK) {
             if (++count[1] >= Settings.IMP.TICK_LIMITER.FALLING) {
-                cancelNearby(cx, cz);
-                if (rateLimit <= 0) {
-                    rateLimit = 20;
-                    Fawe.debug("[FAWE `tick-limiter`] Detected and cancelled falling block lag source at " + block.getLocation());
+
+                // Only cancel falling blocks when it's lagging
+                if (Fawe.get().getTimer().getTPS() < 18) {
+                    cancelNearby(cx, cz);
+                    if (rateLimit <= 0) {
+                        rateLimit = 20;
+                        Fawe.debug("[FAWE `tick-limiter`] Detected and cancelled falling block lag source at " + block.getLocation());
+                    }
+                    event.setCancelled(true);
+                    return;
+                } else {
+                    count[1] = 0;
                 }
-                event.setCancelled(true);
-                return;
+            }
+        }
+    }
+
+    /**
+     * Prevent FireWorks from loading chunks
+     * @param event
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onChunkLoad(ChunkLoadEvent event) {
+        if (!Settings.IMP.TICK_LIMITER.FIREWORKS_LOAD_CHUNKS) {
+            Chunk chunk = event.getChunk();
+            Entity[] entities = chunk.getEntities();
+            World world = chunk.getWorld();
+
+            Exception e = new Exception();
+            int start = 14;
+            int end = 22;
+            int depth = Math.min(end, getDepth(e));
+
+            for (int frame = start; frame < depth; frame++) {
+                StackTraceElement elem = getElement(e, frame);
+                if (elem == null) return;
+                String className = elem.getClassName();
+                int len = className.length();
+                if (className != null) {
+                    if (len > 15 && className.charAt(len - 15) == 'E' && className.endsWith("EntityFireworks")) {
+                        for (Entity ent : world.getEntities()) {
+                            if (ent.getType() == EntityType.FIREWORK) {
+                                Vector velocity = ent.getVelocity();
+                                double vertical = Math.abs(velocity.getY());
+                                if (Math.abs(velocity.getX()) > vertical || Math.abs(velocity.getZ()) > vertical) {
+                                    Fawe.debug("[FAWE `tick-limiter`] Detected and cancelled rogue FireWork at " + ent.getLocation());
+                                    ent.remove();
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

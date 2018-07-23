@@ -52,7 +52,7 @@ public class BStats implements Closeable {
     private Gson gson = new Gson();
 
     // Is bStats enabled on this server?
-    private boolean enabled;
+    private volatile boolean enabled;
 
     // The uuid of the server
     private UUID serverUUID;
@@ -81,16 +81,29 @@ public class BStats implements Closeable {
         this.online = online;
 
         File configFile = new File(getJarFile().getParentFile(), "bStats" + File.separator + "config.yml");
+        if (!configFile.exists()) {
+            configFile.getParentFile().mkdirs();
+            try {
+                configFile.createNewFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
 
         YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);
 
+        if (config.isSet("serverUuid")) {
+            try {
+                serverUUID = UUID.fromString(config.getString("serverUuid"));
+            } catch (IllegalArgumentException ignore) {}
+        }
         // Check if the config file exists
-        if (!config.isSet("serverUuid")) {
+        if (serverUUID == null) {
 
             // Add default values
             config.addDefault("enabled", true);
             // Every server gets it's unique random id.
-            config.addDefault("serverUuid", UUID.randomUUID().toString());
+            config.addDefault("serverUuid", (serverUUID = UUID.randomUUID()).toString());
             // Should failed request be logged?
             config.addDefault("logFailedRequests", false);
 
@@ -106,8 +119,6 @@ public class BStats implements Closeable {
             } catch (IOException ignored) { }
         }
 
-        // Load the data
-        serverUUID = UUID.fromString(config.getString("serverUuid"));
 
         if (usedMetricsClass != null) {
             // Already an instance of this class

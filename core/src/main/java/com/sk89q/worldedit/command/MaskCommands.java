@@ -1,25 +1,7 @@
 package com.sk89q.worldedit.command;
 
-import com.boydti.fawe.object.mask.AdjacentAnyMask;
-import com.boydti.fawe.object.mask.AdjacentMask;
-import com.boydti.fawe.object.mask.AngleMask;
-import com.boydti.fawe.object.mask.BiomeMask;
-import com.boydti.fawe.object.mask.BlockLightMask;
-import com.boydti.fawe.object.mask.BrightnessMask;
-import com.boydti.fawe.object.mask.DataMask;
-import com.boydti.fawe.object.mask.IdDataMask;
-import com.boydti.fawe.object.mask.IdMask;
-import com.boydti.fawe.object.mask.LightMask;
-import com.boydti.fawe.object.mask.OpacityMask;
-import com.boydti.fawe.object.mask.RadiusMask;
-import com.boydti.fawe.object.mask.RandomMask;
-import com.boydti.fawe.object.mask.SimplexMask;
-import com.boydti.fawe.object.mask.SkyLightMask;
-import com.boydti.fawe.object.mask.SurfaceMask;
-import com.boydti.fawe.object.mask.WallMask;
-import com.boydti.fawe.object.mask.XAxisMask;
-import com.boydti.fawe.object.mask.YAxisMask;
-import com.boydti.fawe.object.mask.ZAxisMask;
+import com.boydti.fawe.FaweCache;
+import com.boydti.fawe.object.mask.*;
 import com.sk89q.minecraft.util.commands.Command;
 import com.sk89q.worldedit.IncompleteRegionException;
 import com.sk89q.worldedit.LocalSession;
@@ -28,16 +10,7 @@ import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.extent.Extent;
-import com.sk89q.worldedit.function.mask.BlockMask;
-import com.sk89q.worldedit.function.mask.ExistingBlockMask;
-import com.sk89q.worldedit.function.mask.ExpressionMask;
-import com.sk89q.worldedit.function.mask.Mask;
-import com.sk89q.worldedit.function.mask.MaskIntersection;
-import com.sk89q.worldedit.function.mask.MaskUnion;
-import com.sk89q.worldedit.function.mask.Masks;
-import com.sk89q.worldedit.function.mask.OffsetMask;
-import com.sk89q.worldedit.function.mask.RegionMask;
-import com.sk89q.worldedit.function.mask.SolidBlockMask;
+import com.sk89q.worldedit.function.mask.*;
 import com.sk89q.worldedit.internal.expression.Expression;
 import com.sk89q.worldedit.internal.expression.ExpressionException;
 import com.sk89q.worldedit.regions.shape.WorldEditExpressionEnvironment;
@@ -83,6 +56,22 @@ public class MaskCommands extends MethodCommands {
     )
     public Mask light(Extent extent, double min, double max) {
         return new LightMask(extent, (int) min, (int) max);
+    }
+
+    @Command(
+            aliases = {"false"},
+            desc = "Always false"
+    )
+    public Mask falseMask(Extent extent) {
+        return Masks.alwaysFalse();
+    }
+
+    @Command(
+            aliases = {"true"},
+            desc = "Always true"
+    )
+    public Mask trueMask(Extent extent) {
+        return Masks.alwaysTrue();
     }
 
     @Command(
@@ -173,6 +162,19 @@ public class MaskCommands extends MethodCommands {
     }
 
     @Command(
+            aliases = {"#liquid"},
+            desc = "If there is a solid block"
+    )
+    public Mask liquid(Extent extent) {
+        return new ConditionalMask(extent) {
+            @Override
+            public boolean applies(BaseBlock block) {
+                return FaweCache.isLiquid(block.getId());
+            }
+        };
+    }
+
+    @Command(
             aliases = {"#dregion", "#dselection", "#dsel"},
             desc = "inside the player's selection"
     )
@@ -254,19 +256,18 @@ public class MaskCommands extends MethodCommands {
     }
 
     @Command(
-            aliases = {"\\", "/"},
+            aliases = {"\\", "/", "#angle"},
             desc = "Restrict to specific terrain angle",
             help = "Restrict to specific terrain angle\n" +
-                    "The -o flag will only overlay" +
+                    "The -o flag will only overlay\n" +
                     "Example: /[0d][45d]\n" +
                     "Explanation: Allows any block where the adjacent block is between 0 and 45 degrees.\n" +
                     "Example: /[3][20]\n" +
                     "Explanation: Allows any block where the adjacent block is between 3 and 20 blocks below",
-            usage = "<min> <max>",
-            min = 2,
-            max = 2
+            usage = "<min> <max> [distance=1]",
+            min = 2
     )
-    public Mask angle(Extent extent, String min, String max, @Switch('o') boolean overlay) throws ExpressionException {
+    public Mask angle(Extent extent, String min, String max, @Switch('o') boolean overlay, @Optional("1") int distance) throws ExpressionException {
         double y1, y2;
         boolean override;
         if (max.endsWith("d")) {
@@ -278,7 +279,60 @@ public class MaskCommands extends MethodCommands {
             y1 = (Expression.compile(min).evaluate());
             y2 = (Expression.compile(max).evaluate());
         }
-        return new AngleMask(extent, y1, y2, overlay);
+        return new AngleMask(extent, y1, y2, overlay, distance);
+    }
+
+    @Command(
+            aliases = {"(", ")", "#roc"},
+            desc = "Restrict to near specific terrain slope rate of change",
+            help = "Restrict to near specific terrain slope rate of change\n" +
+                    "The -o flag will only overlay\n" +
+                    "Example: ([0d][45d][5]\n" +
+                    "Explanation: Restrict near where the angle changes between 0-45 degrees within 5 blocks\n" +
+                    "Note: Use negatives for decreasing slope",
+            usage = "<min> <max> [distance=4]",
+            min = 2
+    )
+    public Mask roc(Extent extent, String min, String max, @Switch('o') boolean overlay, @Optional("4") int distance) throws ExpressionException {
+        double y1, y2;
+        boolean override;
+        if (max.endsWith("d")) {
+            double y1d = Expression.compile(min.substring(0, min.length() - 1)).evaluate();
+            double y2d = Expression.compile(max.substring(0, max.length() - 1)).evaluate();
+            y1 = (Math.tan(y1d * (Math.PI / 180)));
+            y2 = (Math.tan(y2d * (Math.PI / 180)));
+        } else {
+            y1 = (Expression.compile(min).evaluate());
+            y2 = (Expression.compile(max).evaluate());
+        }
+        return new ROCAngleMask(extent, y1, y2, overlay, distance);
+    }
+
+    @Command(
+            aliases = {"^", "#extrema"},
+            desc = "Restrict to near specific terrain extrema",
+            help = "Restrict to near specific terrain extrema\n" +
+                    "The -o flag will only overlay\n" +
+                    "Example: ([0d][45d][5]\n" +
+                    "Explanation: Restrict to near 45 degrees of local maxima\n" +
+                    "Note: Use negatives for local minima",
+            usage = "<min> <max> [distance=1]",
+            min = 2,
+            max = 4
+    )
+    public Mask extrema(Extent extent, String min, String max, @Switch('o') boolean overlay, @Optional("4") int distance) throws ExpressionException {
+        double y1, y2;
+        boolean override;
+        if (max.endsWith("d")) {
+            double y1d = Expression.compile(min.substring(0, min.length() - 1)).evaluate();
+            double y2d = Expression.compile(max.substring(0, max.length() - 1)).evaluate();
+            y1 = (Math.tan(y1d * (Math.PI / 180)));
+            y2 = (Math.tan(y2d * (Math.PI / 180)));
+        } else {
+            y1 = (Expression.compile(min).evaluate());
+            y2 = (Expression.compile(max).evaluate());
+        }
+        return new ExtremaMask(extent, y1, y2, overlay, distance);
     }
 
     @Command(

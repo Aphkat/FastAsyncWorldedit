@@ -1,5 +1,6 @@
 package com.boydti.fawe.regions;
 
+import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.object.FawePlayer;
 import com.boydti.fawe.regions.general.RegionFilter;
 
@@ -8,6 +9,16 @@ public abstract class FaweMaskManager<T> {
     public enum MaskType {
         OWNER,
         MEMBER
+
+        ;
+
+        public static MaskType getDefaultMaskType() {
+            try {
+                return MaskType.valueOf(Settings.IMP.REGION_RESTRICTIONS_OPTIONS.MODE.toUpperCase());
+            } catch (Exception ignore) {
+                return MEMBER;
+            }
+        }
     }
 
     private final String key;
@@ -25,8 +36,9 @@ public abstract class FaweMaskManager<T> {
         return this.key;
     }
 
+    @Deprecated
     public FaweMask getMask(final FawePlayer<T> player) {
-        return getMask(player, MaskType.MEMBER);
+        return getMask(player, MaskType.getDefaultMaskType());
     }
 
     public FaweMask getMask(final FawePlayer<T> player, MaskType type) {
@@ -39,5 +51,9 @@ public abstract class FaweMaskManager<T> {
 
     public RegionFilter getFilter(String world) {
         return null;
+    }
+
+    private boolean hasMemberPermission(FawePlayer fp) {
+        return fp.hasPermission("fawe." + getKey() + ".member");
     }
 }

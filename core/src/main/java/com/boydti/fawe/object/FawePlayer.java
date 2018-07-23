@@ -2,49 +2,40 @@ package com.boydti.fawe.object;
 
 import com.boydti.fawe.Fawe;
 import com.boydti.fawe.FaweAPI;
+import com.boydti.fawe.command.CFICommands;
 import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.config.Settings;
+import com.boydti.fawe.object.brush.visualization.VirtualWorld;
 import com.boydti.fawe.object.clipboard.DiskOptimizedClipboard;
 import com.boydti.fawe.object.exception.FaweException;
+import com.boydti.fawe.object.task.SimpleAsyncNotifyQueue;
 import com.boydti.fawe.regions.FaweMaskManager;
-import com.boydti.fawe.util.MainUtil;
-import com.boydti.fawe.util.SetQueue;
-import com.boydti.fawe.util.TaskManager;
-import com.boydti.fawe.util.WEManager;
+import com.boydti.fawe.util.*;
 import com.boydti.fawe.wrappers.FakePlayer;
 import com.boydti.fawe.wrappers.LocationMaskedPlayerWrapper;
 import com.boydti.fawe.wrappers.PlayerWrapper;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.EmptyClipboardException;
-import com.sk89q.worldedit.IncompleteRegionException;
-import com.sk89q.worldedit.LocalSession;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.WorldEditException;
 import com.sk89q.worldedit.command.tool.BrushTool;
 import com.sk89q.worldedit.command.tool.Tool;
 import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.event.platform.CommandEvent;
-import com.sk89q.worldedit.extension.platform.Actor;
-import com.sk89q.worldedit.extension.platform.CommandManager;
+import com.sk89q.worldedit.extension.platform.*;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
-import com.sk89q.worldedit.regions.Region;
-import com.sk89q.worldedit.regions.RegionOperationException;
-import com.sk89q.worldedit.regions.RegionSelector;
+import com.sk89q.worldedit.regions.*;
+import com.sk89q.worldedit.regions.selector.ConvexPolyhedralRegionSelector;
 import com.sk89q.worldedit.regions.selector.CuboidRegionSelector;
+import com.sk89q.worldedit.regions.selector.CylinderRegionSelector;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.sk89q.worldedit.world.World;
 import com.sk89q.worldedit.world.registry.WorldData;
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.text.NumberFormat;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public abstract class FawePlayer<T> extends Metadatable {
@@ -131,6 +122,50 @@ public abstract class FawePlayer<T> extends Metadatable {
         if (Settings.IMP.CLIPBOARD.USE_DISK) {
             loadClipboardFromDisk();
         }
+        Updater updater = Fawe.get().getUpdater();
+        if (updater != null && updater.hasPending(this)) {
+            TaskManager.IMP.async(() -> updater.confirmUpdate(this));
+        }
+    }
+
+    public int cancel(boolean close) {
+        Collection<FaweQueue> queues = SetQueue.IMP.getAllQueues();
+        int cancelled = 0;
+        clearActions();
+        for (FaweQueue queue : queues) {
+            Collection<EditSession> sessions = queue.getEditSessions();
+            for (EditSession session : sessions) {
+                FawePlayer currentPlayer = session.getPlayer();
+                if (currentPlayer == this) {
+                    if (session.cancel()) {
+                        cancelled++;
+                    }
+                }
+            }
+        }
+        VirtualWorld world = getSession().getVirtualWorld();
+        if (world != null) {
+            if (close) {
+                try {
+                    world.close(false);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            else world.clear();
+        }
+        return cancelled;
+    }
+
+    public void checkConfirmation(String command, int times, int limit) throws RegionOperationException {
+        if (command == null || getMeta("cmdConfirmRunning", false)) {
+            return;
+        }
+        if (times > limit) {
+            setMeta("cmdConfirm", command);
+            String volume = "<unspecified>";
+            throw new RegionOperationException(BBC.WORLDEDIT_CANCEL_REASON_CONFIRM.f(0, times, command, volume));
+        }
     }
 
     public void checkConfirmationRadius(String command, int radius) throws RegionOperationException {
@@ -140,7 +175,8 @@ public abstract class FawePlayer<T> extends Metadatable {
         if (radius > 0) {
             if (radius > 448) {
                 setMeta("cmdConfirm", command);
-                throw new RegionOperationException(BBC.WORLDEDIT_CANCEL_REASON_CONFIRM.f(0, radius, command));
+                long volume = (long) (Math.PI * ((double) radius * radius));
+                throw new RegionOperationException(BBC.WORLDEDIT_CANCEL_REASON_CONFIRM.f(0, radius, command, NumberFormat.getNumberInstance().format(volume)));
             }
         }
     }
@@ -150,12 +186,13 @@ public abstract class FawePlayer<T> extends Metadatable {
             return;
         }
         if (region != null) {
-            Vector min = region.getMinimumPoint();
-            Vector max = region.getMaximumPoint();
+            Vector min = region.getMinimumPoint().toBlockVector();
+            Vector max = region.getMaximumPoint().toBlockVector();
             long area = (long) ((max.getX() - min.getX()) * (max.getZ() - min.getZ() + 1)) * times;
             if (area > 2 << 18) {
                 setMeta("cmdConfirm", command);
-                throw new RegionOperationException(BBC.WORLDEDIT_CANCEL_REASON_CONFIRM.f(min, max, command));
+                long volume = (long) max.subtract(min).add(Vector.ONE).volume() * times;
+                throw new RegionOperationException(BBC.WORLDEDIT_CANCEL_REASON_CONFIRM.f(min, max, command, NumberFormat.getNumberInstance().format(volume)));
             }
         }
     }
@@ -165,27 +202,24 @@ public abstract class FawePlayer<T> extends Metadatable {
             return;
         }
         if (region != null) {
-            Vector min = region.getMinimumPoint();
-            Vector max = region.getMaximumPoint();
+            Vector min = region.getMinimumPoint().toBlockVector();
+            Vector max = region.getMaximumPoint().toBlockVector();
             long area = (long) ((max.getX() - min.getX()) * (max.getZ() - min.getZ() + 1));
             if (area > 2 << 18) {
                 setMeta("cmdConfirm", command);
-                throw new RegionOperationException(BBC.WORLDEDIT_CANCEL_REASON_CONFIRM.f(min, max, command));
+                long volume = (long) max.subtract(min).add(Vector.ONE).volume();
+                throw new RegionOperationException(BBC.WORLDEDIT_CANCEL_REASON_CONFIRM.f(min, max, command, NumberFormat.getNumberInstance().format(volume)));
             }
         }
     }
 
-    public void checkAllowedRegion(Region selection) {
-        checkAllowedRegion(new RegionWrapper(selection.getMinimumPoint(), selection.getMaximumPoint()));
-    }
-
-    public void checkAllowedRegion(RegionWrapper wrappedSelection) {
-        RegionWrapper[] allowed = WEManager.IMP.getMask(this, FaweMaskManager.MaskType.OWNER);
-        HashSet<RegionWrapper> allowedSet = new HashSet<>(Arrays.asList(allowed));
+    public void checkAllowedRegion(Region wrappedSelection) {
+        Region[] allowed = WEManager.IMP.getMask(this, FaweMaskManager.MaskType.OWNER);
+        HashSet<Region> allowedSet = new HashSet<>(Arrays.asList(allowed));
         if (allowed.length == 0) {
             throw new FaweException(BBC.WORLDEDIT_CANCEL_REASON_NO_REGION);
         } else if (!WEManager.IMP.regionContains(wrappedSelection, allowedSet)) {
-            throw new FaweException(BBC.WORLDEDIT_CANCEL_REASON_MAX_FAILS);
+            throw new FaweException(BBC.WORLDEDIT_CANCEL_REASON_OUTSIDE_REGION);
         }
     }
 
@@ -194,14 +228,11 @@ public abstract class FawePlayer<T> extends Metadatable {
         if (confirm == null) {
             return false;
         }
-        queueAction(new Runnable() {
-            @Override
-            public void run() {
-                setMeta("cmdConfirmRunning", true);
-                CommandEvent event = new CommandEvent(getPlayer(), confirm);
-                CommandManager.getInstance().handleCommandOnCurrentThread(event);
-                setMeta("cmdConfirmRunning", false);
-            }
+        queueAction(() -> {
+            setMeta("cmdConfirmRunning", true);
+            CommandEvent event = new CommandEvent(getPlayer(), confirm);
+            CommandManager.getInstance().handleCommandOnCurrentThread(event);
+            setMeta("cmdConfirmRunning", false);
         });
         return true;
     }
@@ -216,62 +247,16 @@ public abstract class FawePlayer<T> extends Metadatable {
         }
     }
 
-    private AtomicInteger runningCount = new AtomicInteger();
-
+    /**
+     * Queue an action to run async
+     * @param run
+     */
     public void queueAction(final Runnable run) {
-        Runnable wrappedTask = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    run.run();
-                } catch (Throwable e) {
-                    while (e.getCause() != null) {
-                        e = e.getCause();
-                    }
-                    if (e instanceof WorldEditException) {
-                        sendMessage(BBC.getPrefix() + e.getLocalizedMessage());
-                    } else {
-                        FaweException fe = FaweException.get(e);
-                        if (fe != null) {
-                            sendMessage(fe.getMessage());
-                        } else {
-                            e.printStackTrace();
-                        }
-                    }
-                }
-                runningCount.decrementAndGet();
-                Runnable next = getActions().poll();
-                if (next != null) {
-                    next.run();
-                }
-            }
-        };
-        getActions().add(wrappedTask);
-        FaweLimit limit = getLimit();
-        if (runningCount.getAndIncrement() < limit.MAX_ACTIONS) {
-            Runnable task = getActions().poll();
-            if (task != null) {
-                task.run();
-            }
-        }
+        runAction(run, false, true);
     }
 
     public void clearActions() {
-        while (getActions().poll() != null) {
-            runningCount.decrementAndGet();
-        }
-    }
-
-    private ConcurrentLinkedDeque<Runnable> getActions() {
-        ConcurrentLinkedDeque<Runnable> adder = getMeta("fawe_action_v2");
-        if (adder == null) {
-            adder = new ConcurrentLinkedDeque();
-            ConcurrentLinkedDeque<Runnable> previous = (ConcurrentLinkedDeque<Runnable>) getAndSetMeta("fawe_action_v2", adder);
-            if (previous != null) {
-                setMeta("fawe_action_v2", adder = previous);
-            }
-        }
-        return adder;
+        asyncNotifyQueue.clear();
     }
 
     public boolean runAsyncIfFree(Runnable r) {
@@ -282,29 +267,56 @@ public abstract class FawePlayer<T> extends Metadatable {
         return runAction(r, true, false);
     }
 
-    public boolean runAction(final Runnable ifFree, boolean checkFree, boolean async) {
-        long[] actionTime = getMeta("lastActionTime");
-        if (actionTime == null) {
-            setMeta("lastActionTime", actionTime = new long[2]);
+    // Queue for async tasks
+    private AtomicInteger runningCount = new AtomicInteger();
+    private SimpleAsyncNotifyQueue asyncNotifyQueue = new SimpleAsyncNotifyQueue((t, e) -> {
+        while (e.getCause() != null) {
+            e = e.getCause();
         }
-        actionTime[1] = actionTime[0];
-        actionTime[0] = Fawe.get().getTimer().getTick();
-        if (checkFree) {
-            if (async) {
-                TaskManager.IMP.taskNow(new Runnable() {
-                    @Override
-                    public void run() {
-                        queueAction(ifFree);
-                    }
-                }, async);
-            } else {
-                queueAction(ifFree);
-            }
-            return true;
+        if (e instanceof WorldEditException) {
+            sendMessage(BBC.getPrefix() + e.getLocalizedMessage());
         } else {
-            TaskManager.IMP.taskNow(ifFree, async);
+            FaweException fe = FaweException.get(e);
+            if (fe != null) {
+                sendMessage(fe.getMessage());
+            } else {
+                e.printStackTrace();
+            }
         }
-        return false;
+    });
+
+    /**
+     * Run a task either async, or on the current thread
+     * @param ifFree
+     * @param checkFree Whether to first check if a task is running
+     * @param async
+     * @return false if the task was ran or queued
+     */
+    public boolean runAction(final Runnable ifFree, boolean checkFree, boolean async) {
+        if (checkFree) {
+            if (runningCount.get() != 0) return false;
+        }
+        Runnable wrapped = () -> {
+            try {
+                runningCount.addAndGet(1);
+                ifFree.run();
+            } finally {
+                runningCount.decrementAndGet();
+            }
+        };
+        if (async) {
+            asyncNotifyQueue.queue(wrapped);
+        } else {
+            TaskManager.IMP.taskNow(wrapped, false);
+        }
+        return true;
+    }
+
+    public boolean checkAction() {
+        long time = getMeta("faweActionTick", Long.MIN_VALUE);
+        long tick = Fawe.get().getTimer().getTick();
+        setMeta("faweActionTick", tick);
+        return tick > time;
     }
 
     /**
@@ -350,9 +362,22 @@ public abstract class FawePlayer<T> extends Metadatable {
         return FaweAPI.getWorld(getLocation().world);
     }
 
+    public FaweQueue getFaweQueue(boolean autoQueue) {
+        return getFaweQueue(true, autoQueue);
+    }
+
+    public FaweQueue getFaweQueue(boolean fast, boolean autoQueue) {
+        CFICommands.CFISettings settings = this.getMeta("CFISettings");
+        if (settings != null && settings.hasGenerator()) {
+            return settings.getGenerator();
+        } else {
+            return SetQueue.IMP.getNewQueue(getWorld(), true, autoQueue);
+        }
+    }
+
     public FaweQueue getMaskedFaweQueue(boolean autoQueue) {
-        FaweQueue queue = SetQueue.IMP.getNewQueue(getWorld(), true, autoQueue);
-        RegionWrapper[] allowedRegions = getCurrentRegions();
+        FaweQueue queue = getFaweQueue(autoQueue);
+        Region[] allowedRegions = getCurrentRegions();
         if (allowedRegions.length == 1 && allowedRegions[0].isGlobal()) {
             return queue;
         }
@@ -407,6 +432,11 @@ public abstract class FawePlayer<T> extends Metadatable {
      * @return
      */
     public abstract UUID getUUID();
+
+
+    public boolean isSneaking() {
+        return false;
+    }
 
     /**
      * Check the player's permission
@@ -488,11 +518,13 @@ public abstract class FawePlayer<T> extends Metadatable {
      *
      * @return
      */
-    public RegionWrapper[] getCurrentRegions() {
+    @Deprecated
+    public Region[] getCurrentRegions() {
         return WEManager.IMP.getMask(this);
     }
 
-    public RegionWrapper[] getCurrentRegions(FaweMaskManager.MaskType type) {
+    @Deprecated
+    public Region[] getCurrentRegions(FaweMaskManager.MaskType type) {
         return WEManager.IMP.getMask(this, type);
     }
 
@@ -501,11 +533,34 @@ public abstract class FawePlayer<T> extends Metadatable {
      *
      * @param region
      */
+    @Deprecated
     public void setSelection(final RegionWrapper region) {
         final Player player = this.getPlayer();
-        Vector top = region.getTopVector();
+        Vector top = region.getMaximumPoint();
         top.mutY(getWorld().getMaxY());
-        final RegionSelector selector = new CuboidRegionSelector(player.getWorld(), region.getBottomVector(), top);
+        final RegionSelector selector = new CuboidRegionSelector(player.getWorld(), region.getMinimumPoint(), top);
+        this.getSession().setRegionSelector(player.getWorld(), selector);
+    }
+
+    public void setSelection(Region region) {
+        RegionSelector selector;
+        switch (region.getClass().getName()) {
+            case "ConvexPolyhedralRegion":
+                selector = new ConvexPolyhedralRegionSelector((ConvexPolyhedralRegion) region);
+                break;
+            case "CylinderRegion":
+                selector = new CylinderRegionSelector((CylinderRegion) region);
+                break;
+            case "Polygonal2DRegion":
+                selector = new com.sk89q.worldedit.regions.selector.Polygonal2DRegionSelector((Polygonal2DRegion) region);
+                break;
+            default:
+                selector = new CuboidRegionSelector(null, region.getMinimumPoint(), region.getMaximumPoint());
+                break;
+        }
+        selector.setWorld(region.getWorld());
+
+        final Player player = this.getPlayer();
         this.getSession().setRegionSelector(player.getWorld(), selector);
     }
 
@@ -523,11 +578,11 @@ public abstract class FawePlayer<T> extends Metadatable {
      *
      * @return
      */
-    public RegionWrapper getLargestRegion() {
+    public Region getLargestRegion() {
         int area = 0;
-        RegionWrapper max = null;
-        for (final RegionWrapper region : this.getCurrentRegions()) {
-            final int tmp = (region.maxX - region.minX) * (region.maxZ - region.minZ);
+        Region max = null;
+        for (final Region region : this.getCurrentRegions()) {
+            final int tmp = region.getArea();
             if (tmp > area) {
                 area = tmp;
                 max = region;
@@ -555,6 +610,7 @@ public abstract class FawePlayer<T> extends Metadatable {
      * - Usually called on logout
      */
     public void unregister() {
+        cancel(true);
         if (Settings.IMP.HISTORY.DELETE_ON_LOGOUT) {
             session = getSession();
             WorldEdit.getInstance().removeSession(toWorldEditPlayer());
@@ -574,7 +630,51 @@ public abstract class FawePlayer<T> extends Metadatable {
      * Get a new EditSession from this player
      */
     public EditSession getNewEditSession() {
-        return WorldEdit.getInstance().getEditSessionFactory().getEditSession(getWorld(), -1, toWorldEditPlayer());
+        return new EditSessionBuilder(getWorld()).player(this).build();
+    }
+
+    public void setVirtualWorld(VirtualWorld world) {
+        getSession().setVirtualWorld(world);
+    }
+
+    /**
+     * Get the World the player is editing in (may not match the world they are in)<br/>
+     * - e.g. If they are editing a CFI world.<br/>
+     * @return Editing world
+     */
+    public World getWorldForEditing() {
+        VirtualWorld virtual = getSession().getVirtualWorld();
+        if (virtual != null) {
+            return virtual;
+        }
+//        CFICommands.CFISettings cfi = getMeta("CFISettings");
+//        if (cfi != null && cfi.hasGenerator() && cfi.getGenerator().hasPacketViewer()) {
+//            return cfi.getGenerator();
+//        }
+        return WorldEdit.getInstance().getPlatformManager().getWorldForEditing(getWorld());
+    }
+
+    public PlayerProxy createProxy() {
+        Player player = getPlayer();
+        World world = getWorldForEditing();
+
+        PlatformManager platformManager = WorldEdit.getInstance().getPlatformManager();
+
+        Player permActor = platformManager.queryCapability(Capability.PERMISSIONS).matchPlayer(player);
+        if (permActor == null) {
+            permActor = player;
+        }
+
+        Player cuiActor = platformManager.queryCapability(Capability.WORLDEDIT_CUI).matchPlayer(player);
+        if (cuiActor == null) {
+            cuiActor = player;
+        }
+
+        PlayerProxy proxy = new PlayerProxy(player, permActor, cuiActor, world);
+        if (world instanceof VirtualWorld) {
+            proxy.setOffset(Vector.ZERO.subtract(((VirtualWorld) world).getOrigin()));
+        }
+        return proxy;
     }
 
 
@@ -589,7 +689,7 @@ public abstract class FawePlayer<T> extends Metadatable {
         Map<EditSession, SetQueue.QueueStage> map = new ConcurrentHashMap<>(8, 0.9f, 1);
         if (requiredStage == null || requiredStage == SetQueue.QueueStage.ACTIVE) {
             for (FaweQueue queue : SetQueue.IMP.getActiveQueues()) {
-                Set<EditSession> sessions = queue.getEditSessions();
+                Collection<EditSession> sessions = queue.getEditSessions();
                 for (EditSession session : sessions) {
                     FawePlayer currentPlayer = session.getPlayer();
                     if (currentPlayer == this) {
@@ -600,7 +700,7 @@ public abstract class FawePlayer<T> extends Metadatable {
         }
         if (requiredStage == null || requiredStage == SetQueue.QueueStage.INACTIVE) {
             for (FaweQueue queue : SetQueue.IMP.getInactiveQueues()) {
-                Set<EditSession> sessions = queue.getEditSessions();
+                Collection<EditSession> sessions = queue.getEditSessions();
                 for (EditSession session : sessions) {
                     FawePlayer currentPlayer = session.getPlayer();
                     if (currentPlayer == this) {

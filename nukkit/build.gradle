@@ -1,9 +1,14 @@
 repositories {
     flatDir {dirs 'lib'}
+//    maven {url "https://repo.potestas.xyz/main/"}
 }
+
+clean { delete "../target" }
+
 dependencies {
     compile project(':core')
-    compile group: "cn.nukkit", name: "nukkit", version: "1.0-20170704.231613-609"
+//    compile 'cn.nukkit:nukkit:1.0-SNAPSHOT'
+    compile name: 'nukkit-1.0-SNAPSHOT'
     compile name: 'worldedit-core-6.1.4-SNAPSHOT-dist'
 }
 

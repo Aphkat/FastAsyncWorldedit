@@ -26,17 +26,12 @@ import com.boydti.fawe.object.FawePlayer;
 import com.boydti.fawe.util.MainUtil;
 import com.boydti.fawe.util.MathMan;
 import com.boydti.fawe.util.TextureUtil;
+import com.boydti.fawe.util.image.ImageUtil;
 import com.sk89q.minecraft.util.commands.Command;
 import com.sk89q.minecraft.util.commands.CommandContext;
 import com.sk89q.minecraft.util.commands.CommandPermissions;
 import com.sk89q.minecraft.util.commands.Logging;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.LocalSession;
-import com.sk89q.worldedit.MutableBlockVector;
-import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.Vector2D;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.WorldEditException;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.function.RegionFunction;
@@ -56,6 +51,7 @@ import com.sk89q.worldedit.util.command.binding.Text;
 import com.sk89q.worldedit.util.command.parametric.Optional;
 import com.sk89q.worldedit.util.command.parametric.ParameterException;
 import com.sk89q.worldedit.world.biome.BaseBiome;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.net.URL;
@@ -115,13 +111,13 @@ public class GenerationCommands extends MethodCommands {
     @Command(
             aliases = {"/image", "/img"},
             desc = "Generate an image",
-            usage = "<imgur> [randomize=true] [complexity=100]",
+            usage = "<imgur> [randomize=true] [complexity=100] [dimensions=100,100]",
             min = 1,
-            max = 3
+            max = 4
     )
     @CommandPermissions("worldedit.generation.image")
     @Logging(PLACEMENT)
-    public void image(Player player, LocalSession session, EditSession editSession, String arg, @Optional("true") boolean randomize, @Optional("100") int threshold) throws WorldEditException, ParameterException, IOException {
+    public void image(Player player, LocalSession session, EditSession editSession, String arg, @Optional("true") boolean randomize, @Optional("100") int threshold, @Optional Vector2D dimensions) throws WorldEditException, ParameterException, IOException {
         TextureUtil tu = Fawe.get().getCachedTextureUtil(randomize, 0, threshold);
         URL url = new URL(arg);
         if (!url.getHost().equalsIgnoreCase("i.imgur.com") && !url.getHost().equalsIgnoreCase("empcraft.com")) {
@@ -129,20 +125,26 @@ public class GenerationCommands extends MethodCommands {
         }
         FawePlayer<Object> fp = FawePlayer.wrap(player);
         BufferedImage image = MainUtil.readImage(url);
+        if (dimensions != null) {
+            image = ImageUtil.getScaledInstance(image, dimensions.getBlockX(), dimensions.getBlockZ(), RenderingHints.VALUE_INTERPOLATION_BILINEAR, false);
+        }
+
         MutableBlockVector pos1 = new MutableBlockVector(player.getPosition());
         MutableBlockVector pos2 = new MutableBlockVector(pos1.add(image.getWidth() - 1, 0, image.getHeight() - 1));
         CuboidRegion region = new CuboidRegion(pos1, pos2);
         int[] count = new int[1];
+        final BufferedImage finalImage = image;
         RegionVisitor visitor = new RegionVisitor(region, new RegionFunction() {
             @Override
             public boolean apply(Vector pos) throws WorldEditException {
                 try {
                     int x = pos.getBlockX() - pos1.getBlockX();
                     int z = pos.getBlockZ() - pos1.getBlockZ();
-                    int color = image.getRGB(x, z);
+                    int color = finalImage.getRGB(x, z);
                     BaseBlock block = tu.getNearestBlock(color);
                     count[0]++;
-                    return editSession.setBlockFast(pos, block);
+                    if (block != null) return editSession.setBlockFast(pos, block);
+                    return false;
                 } catch (Throwable e) {
                     e.printStackTrace();
                 }

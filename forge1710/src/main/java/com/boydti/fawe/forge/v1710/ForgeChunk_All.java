@@ -169,7 +169,7 @@ public class ForgeChunk_All extends CharFaweChunk<Chunk, ForgeQueue_All> {
                     continue;
                 } else if (count >= 4096) {
                     entities[i].clear();
-                } else {
+                } else if (!getParent().getSettings().EXPERIMENTAL.KEEP_ENTITIES_IN_BLOCKS) {
                     char[] array = this.getIdArray(i);
                     if (array == null || entities[i] == null || entities[i].isEmpty()) continue;
                     Collection<Entity> ents = new ArrayList<>(entities[i]);
@@ -182,7 +182,9 @@ public class ForgeChunk_All extends CharFaweChunk<Chunk, ForgeQueue_All> {
                         int y = MathMan.roundInt(entity.posY);
                         if (y < 0 || y > 255) continue;
                         if (array[FaweCache.CACHE_J[y][z][x]] != 0) {
-                            nmsWorld.removeEntity(entity);
+                            synchronized (ForgeQueue_All.class) {
+                                nmsWorld.removeEntity(entity);
+                            }
                         }
                     }
                 }
@@ -193,7 +195,9 @@ public class ForgeChunk_All extends CharFaweChunk<Chunk, ForgeQueue_All> {
                     Collection<Entity> ents = new ArrayList<>(entities[i]);
                     for (Entity entity : ents) {
                         if (entsToRemove.contains(entity.getUniqueID())) {
-                            nmsWorld.removeEntity(entity);
+                            synchronized (ForgeQueue_All.class) {
+                                nmsWorld.removeEntity(entity);
+                            }
                         }
                     }
                 }
@@ -223,7 +227,9 @@ public class ForgeChunk_All extends CharFaweChunk<Chunk, ForgeQueue_All> {
                     tag.removeTag("UUIDLeast");
                     entity.readFromNBT(tag);
                     entity.setPositionAndRotation(x, y, z, yaw, pitch);
-                    nmsWorld.spawnEntityInWorld(entity);
+                    synchronized (ForgeQueue_All.class) {
+                        nmsWorld.spawnEntityInWorld(entity);
+                    }
                 }
             }
             // Run change task if applicable
@@ -247,8 +253,10 @@ public class ForgeChunk_All extends CharFaweChunk<Chunk, ForgeQueue_All> {
                 }
                 int k = FaweCache.CACHE_J[ly][lz][lx];
                 if (array[k] != 0) {
-                    tile.getValue().invalidate();;
-                    iterator.remove();
+                    synchronized (ForgeQueue_All.class) {
+                        tile.getValue().invalidate();
+                        iterator.remove();
+                    }
                 }
             }
             // Efficiently merge sections
@@ -367,8 +375,10 @@ public class ForgeChunk_All extends CharFaweChunk<Chunk, ForgeQueue_All> {
             if (this.biomes != null) {
                 byte[] currentBiomes = nmsChunk.getBiomeArray();
                 for (int i = 0 ; i < this.biomes.length; i++) {
-                    if (this.biomes[i] != 0) {
-                        currentBiomes[i] = this.biomes[i];
+                    byte biome = this.biomes[i];
+                    if (biome != 0) {
+                        if (biome == -1) biome = 0;
+                        currentBiomes[i] = biome;
                     }
                 }
             }

@@ -3,7 +3,7 @@ package com.sk89q.worldedit;
 import java.io.IOException;
 import java.io.Serializable;
 
-public final class MutableBlockVector2D extends Vector2D implements Serializable {
+public final class MutableBlockVector2D extends BlockVector2D implements Serializable {
     private static ThreadLocal<MutableBlockVector2D> MUTABLE_CACHE = new ThreadLocal<MutableBlockVector2D>() {
         @Override
         protected MutableBlockVector2D initialValue() {
@@ -18,6 +18,7 @@ public final class MutableBlockVector2D extends Vector2D implements Serializable
     private transient int x, z;
 
     public MutableBlockVector2D() {
+        super(0, 0);
         this.x = 0;
         this.z = 0;
     }
@@ -76,5 +77,34 @@ public final class MutableBlockVector2D extends Vector2D implements Serializable
     private void readObject(java.io.ObjectInputStream stream) throws IOException, ClassNotFoundException {
         this.x = stream.readInt();
         this.z = stream.readInt();
+    }
+
+    public MutableBlockVector2D nextPosition() {
+        int absX = Math.abs(x);
+        int absY = Math.abs(z);
+        if (absX > absY) {
+            if (x > 0) {
+                return setComponents(x, z + 1);
+            } else {
+                return setComponents(x, z - 1);
+            }
+        } else if (absY > absX) {
+            if (z > 0) {
+                return setComponents(x - 1, z);
+            } else {
+                return setComponents(x + 1, z);
+            }
+        } else {
+            if (x == z && x > 0) {
+                return setComponents(x, z + 1);
+            }
+            if (x == absX) {
+                return setComponents(x, z + 1);
+            }
+            if (z == absY) {
+                return setComponents(x, z - 1);
+            }
+            return setComponents(x + 1, z);
+        }
     }
 }

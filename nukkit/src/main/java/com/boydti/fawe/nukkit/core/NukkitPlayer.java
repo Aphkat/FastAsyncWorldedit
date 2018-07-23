@@ -19,16 +19,13 @@
 
 package com.boydti.fawe.nukkit.core;
 
+import cn.nukkit.AdventureSettings;
 import cn.nukkit.Player;
 import cn.nukkit.inventory.PlayerInventory;
 import cn.nukkit.item.Item;
 import cn.nukkit.level.Location;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.LocalPlayer;
-import com.sk89q.worldedit.LocalWorld;
-import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.WorldEditException;
-import com.sk89q.worldedit.WorldVector;
+import com.google.common.base.Charsets;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.entity.BaseEntity;
 import com.sk89q.worldedit.extent.inventory.BlockBag;
@@ -49,7 +46,7 @@ public class NukkitPlayer extends LocalPlayer {
 
     @Override
     public UUID getUniqueId() {
-        return player.getUniqueId();
+        return UUID.nameUUIDFromBytes(("OfflinePlayer:" + player.getName().toLowerCase()).getBytes(Charsets.UTF_8));
     }
 
     @Override
@@ -174,7 +171,8 @@ public class NukkitPlayer extends LocalPlayer {
         }
 
         setPosition(new Vector(x + 0.5, y, z + 0.5));
-        player.getAdventureSettings().setCanFly(true);
+        player.getAdventureSettings().set(AdventureSettings.Type.ALLOW_FLIGHT, true);
+        player.getAdventureSettings().set(AdventureSettings.Type.FLYING, true);
         player.getAdventureSettings().update();
     }
 

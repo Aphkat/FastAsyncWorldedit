@@ -4,17 +4,14 @@ import com.boydti.fawe.Fawe;
 import com.boydti.fawe.FaweAPI;
 import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.logging.rollback.RollbackOptimizedHistory;
-import com.boydti.fawe.object.FaweLimit;
-import com.boydti.fawe.object.FawePlayer;
-import com.boydti.fawe.object.FaweQueue;
-import com.boydti.fawe.object.NullChangeSet;
-import com.boydti.fawe.object.RegionWrapper;
+import com.boydti.fawe.object.*;
 import com.boydti.fawe.object.changeset.DiskStorageHistory;
 import com.boydti.fawe.object.changeset.FaweChangeSet;
 import com.boydti.fawe.object.changeset.MemoryOptimizedHistory;
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.event.extent.EditSessionEvent;
 import com.sk89q.worldedit.extent.inventory.BlockBag;
+import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.util.eventbus.EventBus;
 import com.sk89q.worldedit.world.World;
 import java.util.UUID;
@@ -31,7 +28,7 @@ public class EditSessionBuilder {
     private FawePlayer player;
     private FaweLimit limit;
     private FaweChangeSet changeSet;
-    private RegionWrapper[] allowedRegions;
+    private Region[] allowedRegions;
     private Boolean autoQueue;
     private Boolean fastmode;
     private Boolean checkMemory;
@@ -134,6 +131,12 @@ public class EditSessionBuilder {
         return this;
     }
 
+    public EditSessionBuilder allowedRegions(@Nullable Region[] allowedRegions) {
+        this.allowedRegions = allowedRegions;
+        return this;
+    }
+
+    @Deprecated
     public EditSessionBuilder allowedRegions(@Nullable RegionWrapper[] allowedRegions) {
         this.allowedRegions = allowedRegions;
         return this;
@@ -145,7 +148,7 @@ public class EditSessionBuilder {
     }
 
     public EditSessionBuilder allowedRegionsEverywhere() {
-        return allowedRegions(new RegionWrapper[]{RegionWrapper.GLOBAL()});
+        return allowedRegions(new Region[]{RegionWrapper.GLOBAL()});
     }
 
     public EditSessionBuilder autoQueue(@Nullable Boolean autoQueue) {
@@ -189,6 +192,6 @@ public class EditSessionBuilder {
     }
 
     public EditSession build() {
-        return new EditSession(worldName, world, queue, player, limit, changeSet, allowedRegions, autoQueue, fastmode, checkMemory, combineStages, blockBag, eventBus, event);
+            return new EditSession(worldName, world, queue, player, limit, changeSet, allowedRegions, autoQueue, fastmode, checkMemory, combineStages, blockBag, eventBus, event);
     }
 }

@@ -1,18 +1,12 @@
 package com.sk89q.worldedit.extent;
 
 import com.boydti.fawe.FaweCache;
-import com.boydti.fawe.jnbt.anvil.generator.CavesGen;
-import com.boydti.fawe.jnbt.anvil.generator.GenBase;
-import com.boydti.fawe.jnbt.anvil.generator.OreGen;
-import com.boydti.fawe.jnbt.anvil.generator.Resource;
-import com.boydti.fawe.jnbt.anvil.generator.SchemGen;
+import com.boydti.fawe.jnbt.anvil.generator.*;
 import com.boydti.fawe.object.PseudoRandom;
-import com.sk89q.worldedit.MutableBlockVector;
-import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.Vector2D;
-import com.sk89q.worldedit.WorldEditException;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.blocks.BaseBlock;
 import com.sk89q.worldedit.blocks.BlockID;
+import com.sk89q.worldedit.blocks.BlockType;
 import com.sk89q.worldedit.entity.BaseEntity;
 import com.sk89q.worldedit.entity.Entity;
 import com.sk89q.worldedit.function.mask.Mask;
@@ -21,6 +15,7 @@ import com.sk89q.worldedit.function.pattern.Pattern;
 import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.sk89q.worldedit.util.Location;
+import com.sk89q.worldedit.world.biome.BaseBiome;
 import com.sk89q.worldedit.world.registry.WorldData;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +38,7 @@ public interface Extent extends InputExtent, OutputExtent {
     default
     @Nullable
     Entity createEntity(Location location, BaseEntity entity) {
-        throw new UnsupportedOperationException(getClass() + " does not support entity creation!");
+        return null;
     }
 
     @Override
@@ -63,6 +58,58 @@ public interface Extent extends InputExtent, OutputExtent {
 
     default BaseBlock getLazyBlock(int x, int y, int z) {
         return getLazyBlock(MutableBlockVector.get(x, y, z));
+    }
+
+    default int getMaxY() {
+        return 255;
+    }
+
+    default boolean setBiome(int x, int y, int z, BaseBiome biome) {
+        return setBiome(MutableBlockVector2D.get(x, z), biome);
+    }
+
+    /**
+     * Returns the highest solid 'terrain' block which can occur naturally.
+     *
+     * @param x    the X coordinate
+     * @param z    the Z cooridnate
+     * @param minY minimal height
+     * @param maxY maximal height
+     * @return height of highest block found or 'minY'
+     */
+    default int getHighestTerrainBlock(final int x, final int z, final int minY, final int maxY) {
+        return this.getHighestTerrainBlock(x, z, minY, maxY, false);
+    }
+
+    /**
+     * Returns the highest solid 'terrain' block which can occur naturally.
+     *
+     * @param x           the X coordinate
+     * @param z           the Z coordinate
+     * @param minY        minimal height
+     * @param maxY        maximal height
+     * @param naturalOnly look at natural blocks or all blocks
+     * @return height of highest block found or 'minY'
+     */
+    default int getHighestTerrainBlock(final int x, final int z, int minY, int maxY, final boolean naturalOnly) {
+        maxY = Math.min(maxY, Math.max(0, maxY));
+        minY = Math.max(0, minY);
+        if (naturalOnly) {
+            for (int y = maxY; y >= minY; --y) {
+                BaseBlock block = getLazyBlock(x, y, z);
+                if (BlockType.isNaturalTerrainBlock(block.getId(), block.getData())) {
+                    return y;
+                }
+            }
+        } else {
+            for (int y = maxY; y >= minY; --y) {
+                BaseBlock block = getLazyBlock(x, y, z);
+                if (!FaweCache.canPassThrough(block.getId(), block.getData())) {
+                    return y;
+                }
+            }
+        }
+        return minY;
     }
 
     default public int getNearestSurfaceLayer(int x, int z, int y, int minY, int maxY) {
@@ -94,7 +141,12 @@ public interface Extent extends InputExtent, OutputExtent {
                 for (int layer = y - clearance - 1; layer >= minY; layer--) {
                     block = getLazyBlock(x, layer, z);
                     if (FaweCache.isLiquidOrGas(block.getId()) != state) {
-                        return ((layer + offset) << 3) - (7 - (state ? block.getData() : data1));
+
+//                        int blockHeight = (newHeight) >> 3;
+//                        int layerHeight = (newHeight) & 0x7;
+
+                        int data = (state ? block.getData() : data1);
+                        return ((layer + offset) << 3) + 0;
                     }
                     data1 = block.getData();
                 }
@@ -108,10 +160,23 @@ public interface Extent extends InputExtent, OutputExtent {
                 }
             }
         }
-        return maxY << 4;
+        return (state ? minY : maxY) << 4;
+    }
+
+    public default int getNearestSurfaceTerrainBlock(int x, int z, int y, int minY, int maxY, boolean ignoreAir) {
+        return getNearestSurfaceTerrainBlock(x, z, y, minY, maxY, minY, maxY, ignoreAir);
     }
 
     public default int getNearestSurfaceTerrainBlock(int x, int z, int y, int minY, int maxY) {
+        return getNearestSurfaceTerrainBlock(x, z, y, minY, maxY, minY, maxY);
+    }
+
+    public default int getNearestSurfaceTerrainBlock(int x, int z, int y, int minY, int maxY, int failedMin, int failedMax) {
+        return getNearestSurfaceTerrainBlock(x, z, y, minY, maxY, failedMin, failedMax, true);
+    }
+
+    public default int getNearestSurfaceTerrainBlock(int x, int z, int y, int minY, int maxY, int failedMin, int failedMax, boolean ignoreAir) {
+        y = Math.max(minY, Math.min(maxY, y));
         int clearanceAbove = maxY - y;
         int clearanceBelow = y - minY;
         int clearance = Math.min(clearanceAbove, clearanceBelow);
@@ -121,25 +186,30 @@ public interface Extent extends InputExtent, OutputExtent {
         for (int d = 0; d <= clearance; d++) {
             int y1 = y + d;
             block = getLazyBlock(x, y1, z);
-            if (FaweCache.canPassThrough(block.getId(), block.getData()) != state) return y1 - offset;
+            if (FaweCache.canPassThrough(block.getId(), block.getData()) != state && block != EditSession.nullBlock) return y1 - offset;
             int y2 = y - d;
             block = getLazyBlock(x, y2, z);
-            if (FaweCache.canPassThrough(block.getId(), block.getData()) != state) return y2 + offset;
+            if (FaweCache.canPassThrough(block.getId(), block.getData()) != state && block != EditSession.nullBlock) return y2 + offset;
         }
         if (clearanceAbove != clearanceBelow) {
             if (clearanceAbove < clearanceBelow) {
                 for (int layer = y - clearance - 1; layer >= minY; layer--) {
                     block = getLazyBlock(x, layer, z);
-                    if (FaweCache.canPassThrough(block.getId(), block.getData()) != state) return layer + offset;
+                    if (FaweCache.canPassThrough(block.getId(), block.getData()) != state && block != EditSession.nullBlock) return layer + offset;
                 }
             } else {
                 for (int layer = y + clearance + 1; layer <= maxY; layer++) {
                     block = getLazyBlock(x, layer, z);
-                    if (FaweCache.canPassThrough(block.getId(), block.getData()) != state) return layer - offset;
+                    if (FaweCache.canPassThrough(block.getId(), block.getData()) != state && block != EditSession.nullBlock) return layer - offset;
                 }
             }
         }
-        return maxY == 255 && minY == 0 ? maxY : -1;
+        int result = state ? failedMin : failedMax;
+        if(result > 0 && !ignoreAir) {
+            block = getLazyBlock(x, result, z);
+            return block.isAir() ? -1 : result;
+        }
+        return result;
     }
 
     default public void addCaves(Region region) throws WorldEditException {
@@ -152,7 +222,7 @@ public interface Extent extends InputExtent, OutputExtent {
         }
     }
 
-    default public void addSchems(Region region, Mask mask, WorldData worldData, ClipboardHolder[] clipboards, int rarity, boolean rotate) throws WorldEditException {
+    default public void addSchems(Region region, Mask mask, WorldData worldData, List<ClipboardHolder> clipboards, int rarity, boolean rotate) throws WorldEditException {
         spawnResource(region, new SchemGen(mask, this, worldData, clipboards, rotate), rarity, 1);
     }
 
@@ -168,6 +238,12 @@ public interface Extent extends InputExtent, OutputExtent {
                 gen.spawn(random, x, z);
             }
         }
+    }
+
+    default boolean contains(Vector pt) {
+        Vector min = getMinimumPoint();
+        Vector max = getMaximumPoint();
+        return (pt.containedWithin(min, max));
     }
 
     default public void addOre(Region region, Mask mask, Pattern material, int size, int frequency, int rarity, int minY, int maxY) throws WorldEditException {

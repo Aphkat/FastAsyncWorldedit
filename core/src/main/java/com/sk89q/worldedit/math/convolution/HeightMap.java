@@ -25,6 +25,7 @@ public class HeightMap {
 
     private final boolean layers;
     private int[] data;
+    private boolean[] invalid;
     private int width;
     private int height;
 
@@ -62,36 +63,57 @@ public class HeightMap {
         int minZ = region.getMinimumPoint().getBlockZ();
         int maxY = region.getMaximumPoint().getBlockY();
 
+        data = new int[width * height];
+        invalid = new boolean[data.length];
+
         if (layers) {
             Vector min = region.getMinimumPoint();
             Vector max = region.getMaximumPoint();
-            int width = region.getWidth();
-            int height = region.getLength();
-            data = new int[width * height];
             int bx = min.getBlockX();
             int bz = min.getBlockZ();
             Iterable<Vector2D> flat = Regions.asFlatRegion(region).asFlatRegion();
             Iterator<Vector2D> iter = new Fast2DIterator(flat, session).iterator();
-            int y = 0;
+            int layer = 0;
             MutableBlockVector mutable = new MutableBlockVector();
             while (iter.hasNext()) {
                 Vector2D pos = iter.next();
                 int x = pos.getBlockX();
                 int z = pos.getBlockZ();
-                y = session.getNearestSurfaceLayer(x, z, y, 0, maxY);
-                data[(z - bz) * width + (x - bx)] = y;
+                layer = session.getNearestSurfaceLayer(x, z, (layer + 7) >> 3, 0, maxY);
+                data[(z - bz) * width + (x - bx)] = layer;
             }
         } else {
             // Store current heightmap data
-            data = new int[width * height];
-            for (int z = 0; z < height; ++z) {
-                for (int x = 0; x < width; ++x) {
-                    data[z * width + x] = session.getHighestTerrainBlock(x + minX, z + minZ, minY, maxY, naturalOnly);
+            int index = 0;
+            if (naturalOnly) {
+                for (int z = 0; z < height; ++z) {
+                    for (int x = 0; x < width; ++x, index++) {
+                        data[index] = session.getHighestTerrainBlock(x + minX, z + minZ, minY, maxY, naturalOnly);
+                    }
+                }
+            } else {
+                int yTmp = 255;
+                for (int z = 0; z < height; ++z) {
+                    for (int x = 0; x < width; ++x, index++) {
+                        yTmp = session.getNearestSurfaceTerrainBlock(x + minX, z + minZ, yTmp, minY, maxY, Integer.MIN_VALUE, Integer.MAX_VALUE);
+                        switch (yTmp) {
+                            case Integer.MIN_VALUE:
+                                yTmp = minY;
+                                invalid[index] = true;
+                                break;
+                            case Integer.MAX_VALUE:
+                                yTmp = maxY;
+                                invalid[index] = true;
+                                break;
+                        }
+                        data[index] = yTmp;
+                    }
                 }
             }
         }
     }
 
+    @Deprecated
     public HeightMap(EditSession session, Region region, int[] data, boolean layers) {
         this.session = session;
         this.region = region;
@@ -125,16 +147,6 @@ public class HeightMap {
         return layers ? applyLayers(newData) : apply(newData);
     }
 
-//    TODO
-//    public int averageFilter(int iterations) throws WorldEditException {
-//        Vector min = region.getMinimumPoint();
-//        Vector max = region.getMaximumPoint();
-//        int shift = layers ? 3 : 0;
-//        AverageHeightMapFilter filter = new AverageHeightMapFilter(data, width, height, min.getBlockY() << shift, max.getBlockY() << shift);
-//        int[] newData = filter.filter(iterations);
-//        return layers ? applyLayers(newData) : apply(newData);
-//    }
-
     public int applyLayers(int[] data) throws WorldEditException {
         checkNotNull(data);
 
@@ -148,20 +160,42 @@ public class HeightMap {
 
         int blocksChanged = 0;
 
+        BaseBlock tmpBlock = EditSession.nullBlock;
+
         // Apply heightmap
         int maxY4 = maxY << 4;
         int index = 0;
+
+        if (!session.hasExtraExtents()) {
+            // TODO fast change height
+//                int chunkZLen = (height + 15) >> 4;
+//                int chunkXLen = (width + 15) >> 4;
+//                FaweQueue queue = session.getQueue();
+//                if (queue instanceof MappedFaweQueue) {
+//                    MappedFaweQueue mfq = (MappedFaweQueue) queue;
+//                    for (int cz = 0; cz < chunkZLen; cz++) {
+//                        for (int cx = 0; cx < chunkXLen; cx++) {
+//                            mfq.queueChunkLoad(cx, cz, new RunnableVal() {
+//                                @Override
+//                                public void run(Object chunk) {
+//                                    todo
+//                                }
+//                            });
+//                        }
+//                    }
+//                }
+        }
+
+
         for (int z = 0; z < height; ++z) {
             int zr = z + originZ;
             for (int x = 0; x < width; ++x) {
                 int curHeight = this.data[index];
+                if (this.invalid != null && this.invalid[index]) continue;
                 int newHeight = Math.min(maxY4, data[index++]);
                 int curBlock = (curHeight) >> 3;
                 int newBlock = (newHeight + 7) >> 3;
                 int xr = x + originX;
-
-                // We are keeping the topmost blocks so take that in account for the scale
-                double scale = (double) (curHeight - originY) / (double) (newHeight - originY);
 
                 // Depending on growing or shrinking we need to start at the bottom or top
                 if (newHeight > curHeight) {
@@ -171,9 +205,10 @@ public class HeightMap {
                     // Skip water/lava
                     if (!FaweCache.isLiquidOrGas(existing.getId())) {
                         // Grow -- start from 1 below top replacing airblocks
-                        for (int y = newBlock - 1 - originY; y >= curBlock; --y) {
-                            int copyFrom = (int) (y * scale);
-                            session.setBlock(xr, originY + y, zr, session.getBlock(xr, originY + copyFrom, zr));
+                        for (int setY = newBlock - 1, getY = curBlock; setY >= curBlock; --setY, getY--) {
+                            BaseBlock get = session.getBlock(xr, getY, zr);
+                            if (get != EditSession.nullBlock) tmpBlock = get;
+                            session.setBlock(xr, setY, zr, tmpBlock);
                             ++blocksChanged;
                         }
                         int setData = newHeight & 7;
@@ -208,7 +243,6 @@ public class HeightMap {
                 }
             }
         }
-
         return blocksChanged;
     }
 
@@ -225,31 +259,34 @@ public class HeightMap {
 
         int blocksChanged = 0;
 
+        BaseBlock tmpBlock = EditSession.nullBlock;
+
         // Apply heightmap
         int index = 0;
         for (int z = 0; z < height; ++z) {
             int zr = z + originZ;
-            for (int x = 0; x < width; ++x) {
+            for (int x = 0; x < width; ++x, index++) {
                 int curHeight = this.data[index];
-                int newHeight = Math.min(maxY, data[index++]);
-                int xr = x + originX;
+                if (this.invalid != null && this.invalid[index]) continue;
+                int newHeight = Math.min(maxY, data[index]);
 
-                // We are keeping the topmost blocks so take that in account for the scale
-                double scale = (double) (curHeight - originY) / (double) (newHeight - originY);
+                int xr = x + originX;
 
                 // Depending on growing or shrinking we need to start at the bottom or top
                 if (newHeight > curHeight) {
                     // Set the top block of the column to be the same type (this might go wrong with rounding)
                     BaseBlock existing = session.getBlock(xr, curHeight, zr);
 
+
                     // Skip water/lava
                     if (!FaweCache.isLiquidOrGas(existing.getId())) {
-                        for (int y = curHeight; y <= newHeight - 1 - originY; y++) {
-                            int copyFrom = (int) (y * scale);
-                            session.setBlock(xr, originY + y, zr, session.getBlock(xr, originY + copyFrom, zr));
+                        int y0 = newHeight - 1;
+                        for (int setY = y0, getY = curHeight - 1; setY >= curHeight; setY--, getY--) {
+                            BaseBlock get = session.getBlock(xr, getY, zr);
+                            if (get != EditSession.nullBlock) tmpBlock = get;
+                            session.setBlock(xr, setY, zr, tmpBlock);
                             ++blocksChanged;
                         }
-
                         session.setBlock(xr, newHeight, zr, existing);
                         ++blocksChanged;
                     }
@@ -267,7 +304,6 @@ public class HeightMap {
                 }
             }
         }
-
         return blocksChanged;
     }
 

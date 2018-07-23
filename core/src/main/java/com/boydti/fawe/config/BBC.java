@@ -43,7 +43,6 @@ public enum BBC {
     WORLDEDIT_ITERATIONS("&7You cannot iterate %current% times. The maximum number of iterations allowed is %max%.", "Info"),
     WORLDEDIT_UNSAFE("&7Access to that command has been blocked", "Info"),
     WORLDEDIT_DANGEROUS_WORLDEDIT("&cProcessed unsafe edit at %s0 by %s1", "Info"),
-    WORLDEDIT_BYPASS("&7&oTo bypass your restrictions use &c/wea", "Info"),
     WORLDEDIT_EXTEND("&cYour edit may have extended outside your allowed region.", "Error"),
     WORLDEDIT_TOGGLE_TIPS_ON("&7Disabled FAWE tips.", "Info"),
     WORLDEDIT_TOGGLE_TIPS_OFF("&7Enabled FAWE tips.", "Info"),
@@ -63,6 +62,8 @@ public enum BBC {
 
     MASK_DISABLED("Global mask disabled", "WorldEdit.General"),
     MASK("Global mask set", "WorldEdit.General"),
+    TEXTURE_DISABLED("Texturing reset", "WorldEdit.General"),
+    TEXTURE_SET("Set texturing to %s1", "WorldEdit.General"),
     SOURCE_MASK_DISABLED("Global source mask disabled", "WorldEdit.General"),
     SOURCE_MASK("Global source mask set", "WorldEdit.General"),
     TRANSFORM_DISABLED("Global transform disabled", "WorldEdit.General"),
@@ -115,7 +116,7 @@ public enum BBC {
 
     WORLD_IS_LOADED("The world shouldn't be in use when executing. Unload the world, or use use -f to override (save first)", "WorldEdit.Anvil"),
 
-    BRUSH_RESET("Reset your brush.", "WorldEdit.Brush"),
+    BRUSH_RESET("Reset your brush. (SHIFT + Click)", "WorldEdit.Brush"),
     BRUSH_NONE("You aren't holding a brush!", "WorldEdit.Brush"),
     BRUSH_SCROLL_ACTION_SET("Set scroll action to %s0", "WorldEdit.Brush"),
     BRUSH_SCROLL_ACTION_UNSET("Removed scrol action", "WorldEdit.Brush"),
@@ -130,6 +131,7 @@ public enum BBC {
     BRUSH_SMOOTH("Note: Use the blend brush if you want to smooth overhangs or caves.", "WorldEdit.Brush"),
     BRUSH_SPLINE("Click to add a point, click the same spot to finish", "WorldEdit.Brush"),
     BRUSH_LINE_PRIMARY("Added point %s0, click another position to create the line", "WorldEdit.Brush"),
+    BRUSH_CATENARY_DIRECTION("Added point %s0, click the direction you want to create the spline", "WorldEdit.Brush"),
     BRUSH_LINE_SECONDARY("Created spline", "WorldEdit.Brush"),
     BRUSH_SPLINE_PRIMARY_2("Added position, Click the same spot to join!", "WorldEdit.Brush"),
     BRUSH_SPLINE_SECONDARY_ERROR("Not enough positions set!", "WorldEdit.Brush"),
@@ -186,7 +188,15 @@ public enum BBC {
     NOTHING_CONFIRMED("You have no actions pending confirmation.", "WorldEdit.Utility"),
 
 
+    SCHEMATIC_PROMPT_CLEAR("&7You may want to use &c%s0 &7to clear your current clipboard first", "Worldedit.Schematic"),
+    SCHEMATIC_SHOW("&7Displaying &a%s0&7 schematics from &a%s1&7:\n" +
+            "&8 - &aLeft click &7a structure to set your clipboard\n" +
+            "&8 - &aRight click &7to add a structure to your multi-clipboard\n" +
+            "&8 - &7Use &a%s2&7 to go back to the world", "Worldedit.Schematic"),
     SCHEMATIC_FORMAT("Available formats (Name: Lookup names)", "Worldedit.Schematic"),
+    SCHEMATIC_MOVE_EXISTS("&c%s0 already exists", "Worldedit.Schematic"),
+    SCHEMATIC_MOVE_SUCCESS("&a%s0 -> %s1", "Worldedit.Schematic"),
+    SCHEMATIC_MOVE_FAILED("&a%s0 no moved: %s1", "Worldedit.Schematic"),
     SCHEMATIC_LOADED("%s0 loaded. Paste it with //paste", "Worldedit.Schematic"),
     SCHEMATIC_SAVED("%s0 saved.", "Worldedit.Schematic"),
     SCHEMATIC_PAGE("Page must be %s", "WorldEdit.Schematic"),
@@ -194,6 +204,7 @@ public enum BBC {
     SCHEMATIC_LIST("Available files (Filename: Format) [%s0/%s1]:", "Worldedit.Schematic"),
     SCHEMATIC_LIST_ELEM("&8 - &a%s0 &8- &7%s1", "Worldedit.Schematic"),
 
+    CLIPBOARD_URI_NOT_FOUND("You do not have %s0 loaded", "WorldEdit.Clipboard"),
     CLIPBOARD_CLEARED("Clipboard cleared", "WorldEdit.Clipboard"),
     CLIPBOARD_INVALID_FORMAT("Unknown clipboard format:  %s0", "WorldEdit.Clipboard"),
 
@@ -248,7 +259,7 @@ public enum BBC {
     WORLDEDIT_SOME_FAILS_BLOCKBAG("&cMissing blocks: %s0", "Error"),
 
     WORLDEDIT_CANCEL_COUNT("&cCancelled %s0 edits.", "Cancel"),
-    WORLDEDIT_CANCEL_REASON_CONFIRM("&7Your selection is large (%s0 -> %s1). Use &c//confirm &7to execute &c%s2", "Cancel"),
+    WORLDEDIT_CANCEL_REASON_CONFIRM("&7Your selection is large (&c%s0 &7-> &c%s1&7, containing &c%s3&7 blocks). Use &c//confirm &7to execute &c%s2", "Cancel"),
     WORLDEDIT_CANCEL_REASON("&cYour WorldEdit action was cancelled:&7 %s0&c.", "Cancel"),
     WORLDEDIT_CANCEL_REASON_MANUAL("Manual cancellation", "Cancel"),
     WORLDEDIT_CANCEL_REASON_LOW_MEMORY("Low memory", "Cancel"),
@@ -257,7 +268,8 @@ public enum BBC {
     WORLDEDIT_CANCEL_REASON_MAX_TILES("Too many blockstates", "Cancel"),
     WORLDEDIT_CANCEL_REASON_MAX_ENTITIES("Too many entities", "Cancel"),
     WORLDEDIT_CANCEL_REASON_MAX_ITERATIONS("Max iterations", "Cancel"),
-    WORLDEDIT_CANCEL_REASON_MAX_FAILS("Outside allowed region (bypass with /wea, or disable `region-restrictions` in config.yml)", "Cancel"),
+    WORLDEDIT_CANCEL_REASON_OUTSIDE_LEVEL("Outside world", "Cancel"),
+    WORLDEDIT_CANCEL_REASON_OUTSIDE_REGION("Outside allowed region (bypass with /wea, or disable `region-restrictions` in config.yml)", "Cancel"),
     WORLDEDIT_CANCEL_REASON_NO_REGION("No allowed region (bypass with /wea, or disable `region-restrictions` in config.yml)", "Cancel"),
     WORLDEDIT_FAILED_LOAD_CHUNK("&cSkipped loading chunk: &7%s0;%s1&c. Try increasing chunk-wait.", "Cancel"),
 
@@ -324,7 +336,7 @@ public enum BBC {
     TIP_REGEN_0("Tip: Use a biome with /regen [biome]", "Tips"),
     TIP_REGEN_1("Tip: Use a seed with /regen [biome] [seed]", "Tips"),
 
-    TIP_BIOME_PATTERN("Tip: The &c#biome:forest&7 pattern can be used in any command", "Tips"),
+    TIP_BIOME_PATTERN("Tip: The &c#biome[forest]&7 pattern can be used in any command", "Tips"),
     TIP_BIOME_MASK("Tip: Restrict to a biome with the `$jungle` mask", "Tips"),;
 
 

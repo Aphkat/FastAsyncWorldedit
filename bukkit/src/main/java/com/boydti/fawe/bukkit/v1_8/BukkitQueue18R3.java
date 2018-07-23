@@ -271,6 +271,7 @@ public class BukkitQueue18R3 extends BukkitQueue_0<net.minecraft.server.v1_8_R3.
 
                     nmsWorld.chunkProviderServer.chunkProvider = generator;
 
+                    keepLoaded.remove(MathMan.pairInt(x, z));
                     result = getWorld().regenerateChunk(x, z);
 
                     nmsWorld.chunkProviderServer.chunkProvider = existingGenerator;
@@ -542,19 +543,15 @@ public class BukkitQueue18R3 extends BukkitQueue_0<net.minecraft.server.v1_8_R3.
     }
 
     @Override
-    public boolean removeLighting(ChunkSection[] sections, RelightMode mode, boolean sky) {
-        if (mode == RelightMode.ALL) {
-            for (int i = 0; i < sections.length; i++) {
-                ChunkSection section = sections[i];
-                if (section != null) {
-                    section.a(new NibbleArray());
-                    if (sky) {
-                        section.b(new NibbleArray());
-                    }
-                }
+    public boolean removeSectionLighting(ChunkSection section, int layer, boolean sky) {
+        if (section != null) {
+            section.a(new NibbleArray());
+            if (sky) {
+                section.b(new NibbleArray());
             }
+            return true;
         }
-        return true;
+        return false;
     }
 
     @Override

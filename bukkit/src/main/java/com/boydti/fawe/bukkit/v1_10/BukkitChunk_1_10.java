@@ -10,36 +10,13 @@ import com.boydti.fawe.object.FaweQueue;
 import com.boydti.fawe.util.MainUtil;
 import com.boydti.fawe.util.MathMan;
 import com.boydti.fawe.util.ReflectionUtils;
-import com.sk89q.jnbt.CompoundTag;
-import com.sk89q.jnbt.ListTag;
-import com.sk89q.jnbt.LongTag;
-import com.sk89q.jnbt.StringTag;
-import com.sk89q.jnbt.Tag;
+import com.sk89q.jnbt.*;
 import com.sk89q.worldedit.internal.Constants;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import net.minecraft.server.v1_10_R1.Block;
-import net.minecraft.server.v1_10_R1.BlockPosition;
-import net.minecraft.server.v1_10_R1.DataBits;
-import net.minecraft.server.v1_10_R1.DataPalette;
-import net.minecraft.server.v1_10_R1.DataPaletteBlock;
-import net.minecraft.server.v1_10_R1.DataPaletteGlobal;
-import net.minecraft.server.v1_10_R1.Entity;
-import net.minecraft.server.v1_10_R1.EntityPlayer;
-import net.minecraft.server.v1_10_R1.EntityTypes;
-import net.minecraft.server.v1_10_R1.IBlockData;
-import net.minecraft.server.v1_10_R1.NBTTagCompound;
-import net.minecraft.server.v1_10_R1.NBTTagInt;
-import net.minecraft.server.v1_10_R1.TileEntity;
+import java.util.*;
+import net.minecraft.server.v1_10_R1.*;
 import org.bukkit.Chunk;
 import org.bukkit.World;
 import org.bukkit.event.entity.CreatureSpawnEvent;
@@ -72,9 +49,7 @@ public class BukkitChunk_1_10 extends CharFaweChunk<Chunk, BukkitQueue_1_10> {
             copy.chunk = chunk;
         } else {
             copy = new BukkitChunk_1_10(getParent(), getX(), getZ(), (char[][]) MainUtil.copyNd(ids), count.clone(), air.clone(), heightMap.clone());
-            copy.biomes = biomes;
-            copy.chunk = chunk;
-            copy.biomes = biomes.clone();
+            copy.biomes = biomes != null ? biomes.clone() : null;
             copy.chunk = chunk;
         }
         if (sectionPalettes != null) {
@@ -270,7 +245,7 @@ public class BukkitChunk_1_10 extends CharFaweChunk<Chunk, BukkitQueue_1_10> {
                             ents.clear();
                         }
                     }
-                } else {
+                } else if (!getParent().getSettings().EXPERIMENTAL.KEEP_ENTITIES_IN_BLOCKS) {
                     Collection<net.minecraft.server.v1_10_R1.Entity> ents = entities[i];
                     if (!ents.isEmpty()) {
                         char[] array = this.getIdArray(i);
@@ -334,42 +309,6 @@ public class BukkitChunk_1_10 extends CharFaweChunk<Chunk, BukkitQueue_1_10> {
                         }
                     }
                 }
-            }
-            // Trim tiles
-            Iterator<Map.Entry<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity>> iterator = tiles.entrySet().iterator();
-            HashMap<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity> toRemove = null;
-            while (iterator.hasNext()) {
-                Map.Entry<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity> tile = iterator.next();
-                net.minecraft.server.v1_10_R1.BlockPosition pos = tile.getKey();
-                int lx = pos.getX() & 15;
-                int ly = pos.getY();
-                int lz = pos.getZ() & 15;
-                int j = FaweCache.CACHE_I[ly][lz][lx];
-                char[] array = this.getIdArray(j);
-                if (array == null) {
-                    continue;
-                }
-                int k = FaweCache.CACHE_J[ly][lz][lx];
-                if (array[k] != 0) {
-                    if (toRemove == null) {
-                        toRemove = new HashMap<>();
-                    }
-                    if (copy != null) {
-                        copy.storeTile(tile.getValue(), tile.getKey());
-                    }
-                    toRemove.put(tile.getKey(), tile.getValue());
-                }
-            }
-            if (toRemove != null) {
-                for (Map.Entry<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity> entry : toRemove.entrySet()) {
-                    net.minecraft.server.v1_10_R1.BlockPosition bp = entry.getKey();
-                    net.minecraft.server.v1_10_R1.TileEntity tile = entry.getValue();
-                    tiles.remove(bp);
-                    tile.y();
-                    nmsWorld.s(bp);
-                    tile.invalidateBlockCache();
-                }
-
             }
             // Set blocks
             for (int j = 0; j < sections.length; j++) {
@@ -452,6 +391,42 @@ public class BukkitChunk_1_10 extends CharFaweChunk<Chunk, BukkitQueue_1_10> {
                 }
                 getParent().setCount(0, getParent().getNonEmptyBlockCount(section) + nonEmptyBlockCount, section);
             }
+            // Trim tiles
+            Iterator<Map.Entry<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity>> iterator = tiles.entrySet().iterator();
+            HashMap<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity> toRemove = null;
+            while (iterator.hasNext()) {
+                Map.Entry<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity> tile = iterator.next();
+                net.minecraft.server.v1_10_R1.BlockPosition pos = tile.getKey();
+                int lx = pos.getX() & 15;
+                int ly = pos.getY();
+                int lz = pos.getZ() & 15;
+                int j = FaweCache.CACHE_I[ly][lz][lx];
+                char[] array = this.getIdArray(j);
+                if (array == null) {
+                    continue;
+                }
+                int k = FaweCache.CACHE_J[ly][lz][lx];
+                if (array[k] != 0) {
+                    if (toRemove == null) {
+                        toRemove = new HashMap<>();
+                    }
+                    if (copy != null) {
+                        copy.storeTile(tile.getValue(), tile.getKey());
+                    }
+                    toRemove.put(tile.getKey(), tile.getValue());
+                }
+            }
+            if (toRemove != null) {
+                for (Map.Entry<net.minecraft.server.v1_10_R1.BlockPosition, net.minecraft.server.v1_10_R1.TileEntity> entry : toRemove.entrySet()) {
+                    net.minecraft.server.v1_10_R1.BlockPosition bp = entry.getKey();
+                    net.minecraft.server.v1_10_R1.TileEntity tile = entry.getValue();
+                    tiles.remove(bp);
+                    nmsWorld.s(bp);
+                    tile.y();
+                    tile.invalidateBlockCache();
+                }
+
+            }
             // Set biomes
             if (this.biomes != null) {
                 if (copy != null) {
@@ -459,8 +434,10 @@ public class BukkitChunk_1_10 extends CharFaweChunk<Chunk, BukkitQueue_1_10> {
                 }
                 byte[] currentBiomes = nmsChunk.getBiomeIndex();
                 for (int i = 0 ; i < this.biomes.length; i++) {
-                    if (this.biomes[i] != 0) {
-                        currentBiomes[i] = this.biomes[i];
+                    byte biome = this.biomes[i];
+                    if (biome != 0) {
+                        if (biome == -1) biome = 0;
+                        currentBiomes[i] = biome;
                     }
                 }
             }

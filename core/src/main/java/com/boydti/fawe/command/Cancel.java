@@ -4,10 +4,10 @@ import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.object.FaweCommand;
 import com.boydti.fawe.object.FawePlayer;
 import com.boydti.fawe.object.FaweQueue;
+import com.boydti.fawe.object.brush.visualization.VirtualWorld;
 import com.boydti.fawe.util.SetQueue;
 import com.sk89q.worldedit.EditSession;
 import java.util.Collection;
-import java.util.Set;
 import java.util.UUID;
 
 public class Cancel extends FaweCommand {
@@ -21,21 +21,7 @@ public class Cancel extends FaweCommand {
         if (player == null) {
             return false;
         }
-        UUID uuid = player.getUUID();
-        Collection<FaweQueue> queues = SetQueue.IMP.getAllQueues();
-        int cancelled = 0;
-        player.clearActions();
-        for (FaweQueue queue : queues) {
-            Set<EditSession> sessions = queue.getEditSessions();
-            for (EditSession session : sessions) {
-                FawePlayer currentPlayer = session.getPlayer();
-                if (currentPlayer == player) {
-                    if (session.cancel()) {
-                        cancelled++;
-                    }
-                }
-            }
-        }
+        int cancelled = player.cancel(false);
         BBC.WORLDEDIT_CANCEL_COUNT.send(player, cancelled);
         return true;
     }

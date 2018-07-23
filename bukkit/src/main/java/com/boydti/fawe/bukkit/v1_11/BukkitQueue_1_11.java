@@ -230,6 +230,7 @@ public class BukkitQueue_1_11 extends BukkitQueue_0<net.minecraft.server.v1_11_R
 
                     ReflectionUtils.setFailsafeFieldValue(fieldChunkGenerator, this.nmsWorld.getChunkProviderServer(), generator);
 
+                    keepLoaded.remove(MathMan.pairInt(x, z));
                     result = getWorld().regenerateChunk(x, z);
 
                     ReflectionUtils.setFailsafeFieldValue(fieldChunkGenerator, this.nmsWorld.getChunkProviderServer(), existingGenerator);
@@ -650,19 +651,15 @@ public class BukkitQueue_1_11 extends BukkitQueue_0<net.minecraft.server.v1_11_R
     }
 
     @Override
-    public boolean removeLighting(ChunkSection[] sections, RelightMode mode, boolean sky) {
-        if (mode != RelightMode.NONE) {
-            for (int i = 0; i < sections.length; i++) {
-                ChunkSection section = sections[i];
-                if (section != null) {
-                    section.a(new NibbleArray()); // Emitted
-                    if (sky) {
-                        section.b(new NibbleArray()); // Skylight
-                    }
-                }
+    public boolean removeSectionLighting(ChunkSection section, int layer, boolean sky) {
+        if (section != null) {
+            section.a(new NibbleArray());
+            if (sky) {
+                section.b(new NibbleArray());
             }
+            return true;
         }
-        return true;
+        return false;
     }
 
     @Override

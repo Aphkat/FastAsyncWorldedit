@@ -19,29 +19,29 @@
 
 package com.sk89q.worldedit.command;
 
+import com.boydti.fawe.Fawe;
 import com.boydti.fawe.FaweAPI;
 import com.boydti.fawe.config.BBC;
 import com.boydti.fawe.config.Settings;
 import com.boydti.fawe.object.FaweLimit;
 import com.boydti.fawe.object.FawePlayer;
+import com.boydti.fawe.object.RunnableVal;
+import com.boydti.fawe.object.clipboard.MultiClipboardHolder;
 import com.boydti.fawe.object.clipboard.ReadOnlyClipboard;
+import com.boydti.fawe.object.clipboard.URIClipboardHolder;
 import com.boydti.fawe.object.clipboard.WorldCutClipboard;
 import com.boydti.fawe.object.exception.FaweException;
 import com.boydti.fawe.object.io.FastByteArrayOutputStream;
 import com.boydti.fawe.object.schematic.Schematic;
 import com.boydti.fawe.util.ImgurUtility;
+import com.boydti.fawe.util.MainUtil;
 import com.boydti.fawe.util.MaskTraverser;
-import com.sk89q.minecraft.util.commands.Command;
-import com.sk89q.minecraft.util.commands.CommandContext;
-import com.sk89q.minecraft.util.commands.CommandException;
-import com.sk89q.minecraft.util.commands.CommandPermissions;
-import com.sk89q.minecraft.util.commands.Logging;
-import com.sk89q.worldedit.EditSession;
-import com.sk89q.worldedit.LocalSession;
-import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.WorldEditException;
+import com.boydti.fawe.util.gui.FormBuilder;
+import com.boydti.fawe.wrappers.FakePlayer;
+import com.sk89q.minecraft.util.commands.*;
+import com.sk89q.worldedit.*;
 import com.sk89q.worldedit.entity.Player;
+import com.sk89q.worldedit.event.extent.PasteEvent;
 import com.sk89q.worldedit.extent.clipboard.BlockArrayClipboard;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormat;
@@ -63,8 +63,17 @@ import com.sk89q.worldedit.regions.selector.CuboidRegionSelector;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.sk89q.worldedit.util.command.binding.Switch;
 import com.sk89q.worldedit.util.command.parametric.Optional;
+import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.file.Files;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 
 import static com.sk89q.minecraft.util.commands.Logging.LogMode.PLACEMENT;
@@ -273,49 +282,108 @@ public class ClipboardCommands extends MethodCommands {
             BBC.CLIPBOARD_INVALID_FORMAT.send(player, formatName);
             return;
         }
-        ClipboardHolder holder = session.getClipboard();
-        Clipboard clipboard = holder.getClipboard();
-        final Transform transform = holder.getTransform();
-        final Clipboard target;
-        // If we have a transform, bake it into the copy
-        if (!transform.isIdentity()) {
-            final FlattenedClipboardTransform result = FlattenedClipboardTransform.transform(clipboard, transform, holder.getWorldData());
-            target = new BlockArrayClipboard(result.getTransformedRegion(), player.getUniqueId());
-            target.setOrigin(clipboard.getOrigin());
-            Operations.completeLegacy(result.copyTo(target));
-        } else {
-            target = clipboard;
-        }
+
         BBC.GENERATING_LINK.send(player, formatName);
+        ClipboardHolder holder = session.getClipboard();
+
         URL url;
-        switch (format) {
-            case PNG:
-                try {
-                    FastByteArrayOutputStream baos = new FastByteArrayOutputStream(Short.MAX_VALUE);
-                    ClipboardWriter writer = format.getWriter(baos);
-                    writer.write(target, null);
-                    baos.flush();
-                    url = ImgurUtility.uploadImage(baos.toByteArray());
-                } catch (IOException e) {
-                    e.printStackTrace();
+        if (holder instanceof MultiClipboardHolder) {
+            MultiClipboardHolder multi = (MultiClipboardHolder) holder;
+            Set<File> files = new HashSet<>();
+            Set<URI> invalid = new HashSet<>();
+            for (ClipboardHolder cur : multi.getHolders()) {
+                if (cur instanceof URIClipboardHolder) {
+                    URIClipboardHolder uriHolder = (URIClipboardHolder) cur;
+                    URI uri = uriHolder.getUri();
+                    File file = new File(uri.getPath());
+                    if (file.exists() && file.isFile()) {
+                        files.add(file.getAbsoluteFile());
+                    } else if (!uri.getPath().isEmpty()) {
+                        invalid.add(uri);
+                    }
+                }
+            }
+
+            final LocalConfiguration config = this.worldEdit.getConfiguration();
+            final File working = this.worldEdit.getWorkingDirectoryFile(config.saveDir).getAbsoluteFile();
+
+            url = MainUtil.upload(null, null, "zip", new RunnableVal<OutputStream>() {
+                @Override
+                public void run(OutputStream out) {
+                    try (ZipOutputStream zos = new ZipOutputStream(out)) {
+                        for (File file : files) {
+                            String fileName = file.getName();
+                            if (MainUtil.isInSubDirectory(working, file)) fileName = working.toURI().relativize(file.toURI()).getPath();
+                            ZipEntry ze = new ZipEntry(fileName);
+                            zos.putNextEntry(ze);
+                            Files.copy(file.toPath(), zos);
+                            zos.closeEntry();
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            });
+        } else {
+            Clipboard clipboard = holder.getClipboard();
+            final Transform transform = holder.getTransform();
+            final Clipboard target;
+            // If we have a transform, bake it into the copy
+            if (!transform.isIdentity()) {
+                final FlattenedClipboardTransform result = FlattenedClipboardTransform.transform(clipboard, transform, holder.getWorldData());
+                target = new BlockArrayClipboard(result.getTransformedRegion(), player.getUniqueId());
+                target.setOrigin(clipboard.getOrigin());
+                Operations.completeLegacy(result.copyTo(target));
+            } else {
+                target = clipboard;
+            }
+            switch (format) {
+                case PNG:
+                    try {
+                        FastByteArrayOutputStream baos = new FastByteArrayOutputStream(Short.MAX_VALUE);
+                        ClipboardWriter writer = format.getWriter(baos);
+                        writer.write(target, null);
+                        baos.flush();
+                        url = ImgurUtility.uploadImage(baos.toByteArray());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        url = null;
+                    }
+                    break;
+                case SCHEMATIC:
+                    if (Settings.IMP.WEB.URL.isEmpty()) {
+                        BBC.SETTING_DISABLE.send(player, "web.url");
+                        return;
+                    }
+                    url = FaweAPI.upload(target, format);
+                    break;
+                default:
                     url = null;
-                }
-                break;
-            case SCHEMATIC:
-                if (Settings.IMP.WEB.URL.isEmpty()) {
-                    BBC.SETTING_DISABLE.send(player, "web.url");
-                    return;
-                }
-                url = FaweAPI.upload(target, format);
-                break;
-            default:
-                url = null;
-                break;
+                    break;
+            }
         }
         if (url == null) {
             BBC.GENERATING_LINK_FAILED.send(player);
         } else {
-            BBC.DOWNLOAD_LINK.send(player, url);
+            String urlText = url.toString();
+            if (Settings.IMP.WEB.SHORTEN_URLS) {
+                try {
+                    urlText = MainUtil.getText("https://empcraft.com/s/?" + URLEncoder.encode(url.toString(), "UTF-8"));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            if (Fawe.imp().getPlatform().equalsIgnoreCase("nukkit")) {
+                FormBuilder form = Fawe.imp().getFormBuilder();
+                FawePlayer<Object> fp = FawePlayer.wrap(player);
+                if (form != null && fp != FakePlayer.getConsole().toFawePlayer()) {
+                    form.setTitle("Download Clipboard");
+                    form.addInput("url:", urlText, urlText);
+                    form.display(fp);
+                    return;
+                }
+            }
+            BBC.DOWNLOAD_LINK.send(player, urlText);
         }
     }
 
@@ -392,6 +460,8 @@ public class ClipboardCommands extends MethodCommands {
         Clipboard clipboard = holder.getClipboard();
         Region region = clipboard.getRegion();
         Vector to = atOrigin ? clipboard.getOrigin() : session.getPlacementPosition(player);
+        checkPaste(player, editSession, to, holder, clipboard);
+
         Operation operation = holder
                 .createPaste(editSession, editSession.getWorldData())
                 .to(to)
@@ -413,6 +483,14 @@ public class ClipboardCommands extends MethodCommands {
         BBC.COMMAND_PASTE.send(player, to);
         if (!FawePlayer.wrap(player).hasPermission("fawe.tips"))
             BBC.TIP_COPYPASTE.or(BBC.TIP_SOURCE_MASK, BBC.TIP_REPLACE_MARKER).send(player, to);
+    }
+
+    private void checkPaste(Player player, EditSession editSession, Vector to, ClipboardHolder holder, Clipboard clipboard) {
+        URI uri = null;
+        if (holder instanceof URIClipboardHolder) uri = ((URIClipboardHolder) holder).getURI(clipboard);
+        PasteEvent event = new PasteEvent(player, clipboard, uri, editSession, to);
+        worldEdit.getEventBus().post(event);
+        if (event.isCancelled()) throw new FaweException(BBC.WORLDEDIT_CANCEL_REASON_MANUAL);
     }
 
     @Command(
@@ -440,14 +518,17 @@ public class ClipboardCommands extends MethodCommands {
         final Clipboard clipboard = holder.getClipboard();
         final Vector origin = clipboard.getOrigin();
         final Vector to = atOrigin ? origin : session.getPlacementPosition(player);
+        checkPaste(player, editSession, to, holder, clipboard);
 
         Schematic schem = new Schematic(clipboard);
         schem.paste(editSession, to, !ignoreAirBlocks);
 
         Region region = clipboard.getRegion().clone();
         if (selectPasted) {
-            Vector max = to.add(region.getMaximumPoint().subtract(region.getMinimumPoint()));
-            RegionSelector selector = new CuboidRegionSelector(player.getWorld(), to, max);
+            Vector clipboardOffset = clipboard.getRegion().getMinimumPoint().subtract(clipboard.getOrigin());
+            Vector realTo = to.add(new Vector(holder.getTransform().apply(clipboardOffset)));
+            Vector max = realTo.add(new Vector(holder.getTransform().apply(region.getMaximumPoint().subtract(region.getMinimumPoint()))));
+            RegionSelector selector = new CuboidRegionSelector(player.getWorld(), realTo, max);
             session.setRegionSelector(player.getWorld(), selector);
             selector.learnChanges();
             selector.explainRegionAdjust(player, session);
@@ -500,6 +581,7 @@ public class ClipboardCommands extends MethodCommands {
         BBC.COMMAND_FLIPPED.send(player);
     }
 
+    @Deprecated // See SchematicCommands#clear
     @Command(
             aliases = {"clearclipboard"},
             usage = "",
